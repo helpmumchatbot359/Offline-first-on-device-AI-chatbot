@@ -1,0 +1,60 @@
+{
+  "package_version": "mamaai-gemma-4-e2b-2026.10.22",
+  "model": {
+    "candidate": "Gemma 4 E2B mobile text-only",
+    "runtime": "litert-lm",
+    "runtime_version": "0.18.0",
+    "format": "LiteRT-LM",
+    "quantization": "Gemma 4 mobile mixed 2/4/8-bit scheme",
+    "license": "Apache-2.0",
+    "artifact_sha256": "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c",
+    "filename": "gemma-4-E2B-it.litertlm"
+  },
+  "knowledge": {
+    "package_version": "sha256-07f97f28dfb1b30056fa0fc09b0a65eb01240cddc179649c28d596d121bb5abd",
+    "manifest_sha256": "dd680c52f8eb68dce88472fc1cfd10d4637a69aa002f03837546515637209153",
+    "index_sha256": "1b405e80b8b70ec211e81713485e152ecdcf47c15e0eb5c9dcc39607901171ba"
+  },
+  "components": [
+    {
+      "path": "model/gemma-4-E2B-it.litertlm",
+      "size_bytes": 2588147712,
+      "sha256": "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c"
+    },
+    {
+      "path": "knowledge/knowledge.sqlite3",
+      "size_bytes": 27107328,
+      "sha256": "1b405e80b8b70ec211e81713485e152ecdcf47c15e0eb5c9dcc39607901171ba"
+    },
+    {
+      "path": "knowledge/manifest.json",
+      "size_bytes": 4331,
+      "sha256": "dd680c52f8eb68dce88472fc1cfd10d4637a69aa002f03837546515637209153"
+    },
+    {
+      "path": "contracts/tool_contract.json",
+      "size_bytes": 12364,
+      "sha256": "69695d9b2d7723eda6c6a2e8a4beeab85a10e6d85f7dd241bb41b6a50c34e397"
+    },
+    {
+      "path": "prompts/system_prompt.txt",
+      "size_bytes": 4635,
+      "sha256": "08fa683a02cad09b027e82ba8dd0297c5bb6aaa445b8331775755186b05aacea"
+    }
+  ],
+  "excluded_from_release": [
+    "runtime.sqlite3",
+    "Qwen3.5-0.8B-Q4_K_M.gguf",
+    "*.xnnpack_cache",
+    "benchmark databases and scoring workbooks",
+    "raw knowledge exports and evaluation-only files"
+  ],
+  "android_handoff": {
+    "model_path": "model/gemma-4-E2B-it.litertlm",
+    "initial_backend": "CPU",
+    "cache_directory": "app-private writable cache directory",
+    "tool_contract_asset": "contracts/tool_contract.json",
+    "knowledge_index": "knowledge/knowledge.sqlite3",
+    "mutable_chat_and_telemetry": "owned by the mobile app; not included"
+  }
+}

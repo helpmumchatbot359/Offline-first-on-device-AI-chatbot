@@ -1,0 +1,130 @@
+{
+  "corpus_id": "mamabot-internal-medical-knowledge",
+  "package_version": "sha256-07f97f28dfb1b30056fa0fc09b0a65eb01240cddc179649c28d596d121bb5abd",
+  "package_schema_version": "1",
+  "compatibility": {
+    "retrieval_contract_version": "1",
+    "model_runtimes": [
+      {
+        "candidate": "Gemma 4 E2B mobile text-only",
+        "runtime": "litert-lm",
+        "artifact_format": "LiteRT-LM",
+        "artifact_sha256": "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c"
+      },
+      {
+        "candidate": "Qwen3.5 0.8B conversational",
+        "runtime": "llama.cpp",
+        "artifact_format": "GGUF",
+        "artifact_sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517"
+      }
+    ]
+  },
+  "update_policy": {
+    "release_layout": "releases/<package_version>/manifest.json and knowledge.sqlite3",
+    "activation": "atomic active.json replacement after read-only verification",
+    "rollback": "previous_package_version in active.json",
+    "update_history": "update-history.jsonl",
+    "mutable_runtime_state": "runtime.sqlite3 remains separate from the immutable knowledge release"
+  },
+  "owner": "HelpMum",
+  "provenance": {
+    "type": "internal_first_party",
+    "basis": "Existing knowledge corpus used by MamaBot and Vax AI",
+    "exported_at": "2026-10-15T10:34:14+01:00",
+    "external_source_metadata": null,
+    "external_license": null
+  },
+  "scope": {
+    "description": "Internal MamaBot/Vax AI question-and-answer export retained in full for local RAG preparation.",
+    "retrieval_mode": "on_device_local_only",
+    "clinical_content_status": "internal_existing_corpus",
+    "record_shape": "question_and_answer_flattened_into_metadata.additional_info",
+    "package_filtering": "none",
+    "separate_clinical_review_record": null
+  },
+  "canonical_file": {
+    "path": "mamabot-knowledge-records.jsonl",
+    "format": "jsonl",
+    "record_count": 36636,
+    "first_id": "0",
+    "last_id": "36635",
+    "sha256": "07f97f28dfb1b30056fa0fc09b0a65eb01240cddc179649c28d596d121bb5abd",
+    "size_bytes": 17946837,
+    "record_schema": {
+      "id": "string",
+      "namespace": "string",
+      "metadata.additional_info": "string"
+    }
+  },
+  "reference_export": {
+    "path": "mamabot-knowledge-base.txt",
+    "format": "plain_text",
+    "record_count": 36636,
+    "sha256": "4539c641de3a3b2e7aadc3151989c36bc79ad86cb78477ba3845a7e43161ea2c",
+    "size_bytes": 16224294
+  },
+  "derived_outputs": {
+    "normalized_file": {
+      "path": "normalized-records.jsonl",
+      "format": "jsonl",
+      "record_count": 36636,
+      "sha256": "e882984e4c898b216599cc20d0984c6ac96f3f687831b6bc740a7198560194b9",
+      "size_bytes": 19366009,
+      "filtering": "none"
+    }
+  },
+  "retrieval_specification": {
+    "chunking_policy": "one_complete_q_and_a_record_per_passage",
+    "passage_id_policy": "record-{record_id}",
+    "search_method": "sqlite_fts5_bm25",
+    "indexed_fields": "question,answer",
+    "filtering": "none",
+    "embedding_assets": "none",
+    "runtime_database": {
+      "path": "../runtime/runtime.sqlite3",
+      "tables": [
+        "conversation_sessions",
+        "conversation_messages",
+        "documents",
+        "document_passages",
+        "document_search",
+        "telemetry_events",
+        "retrieval_records",
+        "health_records",
+        "reminders"
+      ],
+      "accepted_formats": [
+        "pdf",
+        "docx",
+        "txt",
+        "md"
+      ],
+      "extraction": "text_layer_only",
+      "ocr": "excluded",
+      "chunking_policy": "1200_character_passages_with_200_character_overlap",
+      "search_method": "sqlite_fts5_bm25",
+      "filter_field": "user_id,session_id",
+      "citation_fields": [
+        "display_name",
+        "document_id",
+        "passage_id"
+      ],
+      "content_policy": "document_content_is_not_copied_into_events",
+      "telemetry_sync_column": "synced_at"
+    },
+    "record_count": 36636,
+    "question_answer_character_count": {
+      "minimum": 0,
+      "maximum": 1498,
+      "average": 404.13
+    },
+    "index": {
+      "path": "knowledge.sqlite3",
+      "format": "sqlite_fts5",
+      "sha256": "1b405e80b8b70ec211e81713485e152ecdcf47c15e0eb5c9dcc39607901171ba",
+      "size_bytes": 27107328,
+      "sqlite_page_count": 6618,
+      "sqlite_page_size": 4096
+    }
+  }
+}

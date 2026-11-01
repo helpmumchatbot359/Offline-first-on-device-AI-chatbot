@@ -1,0 +1,198 @@
+{
+  "_note1": "KEEP THIS FILE! Check it into a version control system (VCS) like git.",
+  "_note2": "ObjectBox manages crucial IDs for your object model. See docs for details.",
+  "_note3": "If you have VCS merge conflicts, you must resolve them according to ObjectBox docs.",
+  "entities": [
+    {
+      "id": "1:8669443701960381312",
+      "lastPropertyId": "3:7463798337882542049",
+      "name": "ChatConversationEntity",
+      "properties": [
+        {
+          "id": "1:4154729096231387669",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:4179095601955274813",
+          "name": "chatId",
+          "indexId": "1:573173529218314241",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "3:7463798337882542049",
+          "name": "messagesJson",
+          "type": 9
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "2:2086357312960199509",
+      "lastPropertyId": "13:8238452566174689968",
+      "name": "LocalTelemetryEvent",
+      "properties": [
+        {
+          "id": "1:78675903212279674",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:5007750933458021329",
+          "name": "eventUuid",
+          "indexId": "2:8094516091302139045",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "3:4951621970202648566",
+          "name": "eventType",
+          "type": 9
+        },
+        {
+          "id": "4:9077985275314912104",
+          "name": "chatId",
+          "type": 9
+        },
+        {
+          "id": "5:1143792020945247596",
+          "name": "date",
+          "type": 9
+        },
+        {
+          "id": "6:3551547851488554148",
+          "name": "modelVersion",
+          "type": 9
+        },
+        {
+          "id": "7:100059013236584560",
+          "name": "latencyMs",
+          "type": 6
+        },
+        {
+          "id": "8:1552427708876808863",
+          "name": "outcome",
+          "type": 9
+        },
+        {
+          "id": "9:5604181296189751180",
+          "name": "errorCode",
+          "type": 9
+        },
+        {
+          "id": "10:4697357968382262832",
+          "name": "connectivity",
+          "type": 9
+        },
+        {
+          "id": "11:8074509241417916429",
+          "name": "metadataJson",
+          "type": 9
+        },
+        {
+          "id": "12:1447434561499109103",
+          "name": "syncState",
+          "type": 9
+        },
+        {
+          "id": "13:8238452566174689968",
+          "name": "acknowledgedAt",
+          "type": 9
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "3:858083822734115410",
+      "lastPropertyId": "4:4371767264865662114",
+      "name": "LocalChat",
+      "properties": [
+        {
+          "id": "1:3827153077711747769",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:5467517888075174294",
+          "name": "chatId",
+          "indexId": "3:2210650499649442551",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:1615691082541341291",
+          "name": "createdAt",
+          "type": 9
+        },
+        {
+          "id": "4:4371767264865662114",
+          "name": "updatedAt",
+          "type": 9
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "4:7534165613089168249",
+      "lastPropertyId": "7:6436809668492657866",
+      "name": "LocalChatMessage",
+      "properties": [
+        {
+          "id": "1:2239929732996608680",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:2177272116939793345",
+          "name": "chatId",
+          "type": 9
+        },
+        {
+          "id": "3:5273428143905580709",
+          "name": "message",
+          "type": 9
+        },
+        {
+          "id": "4:2693827572167441898",
+          "name": "aiResponse",
+          "type": 9
+        },
+        {
+          "id": "5:8847842515615619451",
+          "name": "date",
+          "type": 9
+        },
+        {
+          "id": "6:4958249690553008907",
+          "name": "syncState",
+          "type": 9
+        },
+        {
+          "id": "7:6436809668492657866",
+          "name": "chatRowId",
+          "indexId": "4:8179039965722480203",
+          "type": 11,
+          "flags": 520,
+          "relationTarget": "LocalChat"
+        }
+      ],
+      "relations": []
+    }
+  ],
+  "lastEntityId": "4:7534165613089168249",
+  "lastIndexId": "4:8179039965722480203",
+  "lastRelationId": "0:0",
+  "lastSequenceId": "0:0",
+  "modelVersion": 5,
+  "modelVersionParserMinimum": 5,
+  "retiredEntityUids": [],
+  "retiredIndexUids": [],
+  "retiredPropertyUids": [],
+  "retiredRelationUids": [],
+  "version": 1
+}
