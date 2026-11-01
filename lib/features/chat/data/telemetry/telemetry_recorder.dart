@@ -185,6 +185,17 @@ class TelemetryContract {
         if (e.outcome == 'cancelled') {
           need(e.errorCode == 'CANCELLED', 'offline_inference: cancelled needs error_code CANCELLED');
         }
+        // ---- TOOL TELEMETRY ALIGNMENT (the facts must agree with each other) ----
+        need(meta['tool_used'] is bool, 'offline_inference: metadata.tool_used is required (true or false)');
+        if (e.errorCode == 'TOOL_ERROR' || meta['error_stage'] == 'tool_execution') {
+          // A tool error means a tool call happened, so tool_used can never be false.
+          need(meta['tool_used'] == true,
+              'offline_inference: tool_used must be true when error_code is TOOL_ERROR or error_stage is tool_execution');
+        }
+        if (meta['retrieved_passage_count'] != null) {
+          need(meta['retrieved_passage_count'] is int && (meta['retrieved_passage_count'] as int) >= 0,
+              'offline_inference: retrieved_passage_count must be a whole number (0 is allowed)');
+        }
         if (meta['output_tokens'] != null) {
           need(meta['output_tokens'] is int && (meta['output_tokens'] as int) >= 0,
               'offline_inference: output_tokens must be a whole number');
@@ -270,6 +281,11 @@ class TelemetryRecorder {
         return;
       }
       await _local.saveTelemetryEvent(event);
+      if (kDebugMode) {
+        // Debug builds only: lets you SEE exactly what was stored (no message text is ever in it).
+        debugPrint('TELEMETRY SAVED ${event.eventType} outcome=${event.outcome} '
+            'code=${event.errorCode} metadata=${event.metadataJson}');
+      }
     } catch (e) {
       // Telemetry must NEVER crash the chat.
       debugPrint('TELEMETRY SAVE FAILED: $e');

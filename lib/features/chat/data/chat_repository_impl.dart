@@ -120,10 +120,10 @@ class ChatRepositoryImpl implements ChatRepository {
     final overall = Stopwatch()..start(); // only for the separate diagnostic log
 
     // TELEMETRY bookkeeping (only used when the on-phone model is involved)
-    final run = _OfflineRun(); // collects real measurements from the phone model
+    final run = OfflineRun(); // collects real measurements from the phone model
     var offlineAttempted = false; // was the on-phone model asked at all?
     var reachedTheEnd = false; // false = the screen closed in the middle
-    _Failure? failure; // why the on-phone model failed (if it did)
+    OfflineFailure? failure; // why the on-phone model failed (if it did)
 
     try {
       // -----------------------------------------------------------------------
@@ -193,7 +193,7 @@ class ChatRepositoryImpl implements ChatRepository {
             stopped = true;
           } else {
             success = false;
-            failure = _classifyOfflineError(e, run); // TELEMETRY: contract words
+            failure = classifyOfflineError(e, run); // TELEMETRY: contract words
             if (cloudError != null) {
               aiResponse = '${_friendlyCloudMessage(cloudError)}\n\n'
                   'The offline assistant also failed: $e';
@@ -300,12 +300,17 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<void> _recordOfflineTelemetry({
     required String chatId,
     required bool isOnline,
-    required _OfflineRun run,
+    required OfflineRun run,
     required bool cancelled,
-    required _Failure? failure,
+    required OfflineFailure? failure,
   }) async {
     final latencyMs = run.clock.elapsedMilliseconds; // on-phone time only
     final responseMetadata = run.responseMetadata();
+
+    // A tool FAILED while it was running, even though the model still wrote an
+    // answer. The contract still wants: outcome "error", TOOL_ERROR, tool_execution
+    // (and tool_used stays true, because a tool call really happened).
+    failure = finalFailure(cancelled: cancelled, failure: failure, run: run);
     const model = TelemetryContract.modelVersion;
 
     if (cancelled) {
@@ -351,14 +356,29 @@ class ChatRepositoryImpl implements ChatRepository {
     }
   }
 
+  /// Decides the final failure for telemetry. A tool failure is still reported
+  /// as an error even when the model managed to finish an answer.
+  @visibleForTesting
+  static OfflineFailure? finalFailure({
+    required bool cancelled,
+    required OfflineFailure? failure,
+    required OfflineRun run,
+  }) {
+    if (!cancelled && failure == null && run.toolFailed) {
+      return OfflineFailure.inference('TOOL_ERROR', 'tool_execution');
+    }
+    return failure;
+  }
+
   /// Turns an error into the contract's words.
   /// Order matters: the most specific checks come first.
-  _Failure _classifyOfflineError(Object error, _OfflineRun run) {
+  @visibleForTesting
+  static OfflineFailure classifyOfflineError(Object error, OfflineRun run) {
     final text = error.toString().toLowerCase();
 
     // 1) Out of memory is its own runtime failure.
     if (text.contains('out of memory') || text.contains('outofmemory') || RegExp(r'\boom\b').hasMatch(text)) {
-      return _Failure.runtime('OUT_OF_MEMORY', 'out_of_memory', run.stage);
+      return OfflineFailure.runtime('OUT_OF_MEMORY', 'out_of_memory', run.stage);
     }
     // 2) If Android already sent a valid contract code, trust it.
     final nativeCode = run.nativeErrorCode;
@@ -366,26 +386,29 @@ class ChatRepositoryImpl implements ChatRepository {
       final stage = TelemetryContract.inferenceErrorStages.contains(run.nativeErrorStage)
           ? run.nativeErrorStage!
           : run.stage;
-      return _Failure.inference(nativeCode, stage);
+      return OfflineFailure.inference(nativeCode, stage);
     }
     // 3) Failed while loading / model file missing.
     if (text.contains('offline_model_missing') || run.stage == 'model_load') {
-      return _Failure.inference('MODEL_UNAVAILABLE', 'model_load');
+      return OfflineFailure.inference('MODEL_UNAVAILABLE', 'model_load');
     }
     // 4) Took too long (Android's 120 s limit, or our 4 minute watchdog).
     if (text.contains('timeout') || text.contains('timed out') || text.contains('stopped responding')) {
-      return _Failure.inference('GENERATION_TIMEOUT', run.stage);
+      return OfflineFailure.inference('GENERATION_TIMEOUT', run.stage);
     }
     // 5) The question + knowledge did not fit in the model's memory window.
     if (text.contains('context') && (text.contains('limit') || text.contains('length') || text.contains('window'))) {
-      return _Failure.inference('CONTEXT_LIMIT', 'context_build');
+      return OfflineFailure.inference('CONTEXT_LIMIT', 'context_build');
     }
-    // 6) A tool failed.
-    if (run.stage == 'tool_execution' || text.contains('tool')) {
-      return _Failure.inference('TOOL_ERROR', 'tool_execution');
+    // 6) A tool failed. ONLY when a tool call really happened (tool_used = true).
+    //    The old test `text.contains('tool')` also matched "Unable to load shared
+    //    tool contract", a SETUP problem where no tool ever ran. That produced
+    //    TOOL_ERROR + tool_used:false, which contradicts itself.
+    if (run.toolUsed && (run.stage == 'tool_execution' || run.toolFailed)) {
+      return OfflineFailure.inference('TOOL_ERROR', 'tool_execution');
     }
     // 7) Unknown generation failure.
-    return _Failure.runtime('GENERATION_FAILED', 'generation_failure', run.stage);
+    return OfflineFailure.runtime('GENERATION_FAILED', 'generation_failure', run.stage);
   }
 
   // ---------------------------------------------------------------------------
@@ -443,7 +466,7 @@ class ChatRepositoryImpl implements ChatRepository {
     String chatId,
     String text,
     Completer<void> stop,
-    _OfflineRun run, {
+    OfflineRun run, {
     required bool isOnline,
   }) async* {
     run.clock.start(); // latency = from here until the answer ends
@@ -592,7 +615,8 @@ class ChatRepositoryImpl implements ChatRepository {
 // =============================================================================
 
 /// Collects REAL measurements while the on-phone model works.
-class _OfflineRun {
+@visibleForTesting
+class OfflineRun {
   /// Runs only while the on-phone model is busy (the cloud is not included).
   final Stopwatch clock = Stopwatch();
 
@@ -604,6 +628,7 @@ class _OfflineRun {
   int? nativeOutputTokens; // ONLY set when Android itself reports a count
   int? retrievedPassageCount; // ONLY set when Android reports it
   bool toolUsed = false;
+  bool toolFailed = false; // a tool call really failed while executing
   bool streamed = false;
   bool nativeCancelled = false;
   String? nativeErrorCode;
@@ -616,6 +641,12 @@ class _OfflineRun {
     nativeOutputTokens =
         _firstInt(raw, const ['output_tokens', 'token_count', 'generated_tokens']) ?? nativeOutputTokens;
 
+    // TELEMETRY: Android states the truth about tools on tool_result / completed / error.
+    if (raw['tool_used'] == true) toolUsed = true;
+    if (raw['tool_error'] == true) toolFailed = true;
+    final reportedCount = _firstInt(raw, const ['retrieved_passage_count', 'passage_count']);
+    if (reportedCount != null) retrievedPassageCount = reportedCount;
+
     switch (event.type) {
       case AiEventType.token:
         streamed = true;
@@ -623,10 +654,10 @@ class _OfflineRun {
         lastTokenMs = now;
         break;
       case AiEventType.retrievalContext:
-        final passages = raw['passages'];
-        retrievedPassageCount = passages is List
-            ? passages.length
-            : (_firstInt(raw, const ['retrieved_passage_count', 'passage_count']) ?? retrievedPassageCount);
+        // Android sends the passages as "citations" (and their ids as "context_ids").
+        // The old code looked for "passages", which never exists, so it never counted.
+        final listed = raw['passages'] ?? raw['citations'] ?? raw['context_ids'];
+        if (listed is List) retrievedPassageCount = listed.length;
         break;
       case AiEventType.toolCallRequested:
         toolUsed = true;
@@ -662,8 +693,9 @@ class _OfflineRun {
 
     return {
       'output_tokens': ?tokens,
-      if (retrievedPassageCount != null) 'retrieved_passage_count': retrievedPassageCount,
       'tool_used': toolUsed,
+      // When a tool was used the count is ALWAYS sent, including 0 for "found nothing".
+      if (toolUsed) 'retrieved_passage_count': retrievedPassageCount ?? 0,
       'streamed': streamed,
       'time_to_first_token_ms': ?first,
       'tokens_per_second': ?tokensPerSecond,
@@ -684,8 +716,9 @@ class _OfflineRun {
 }
 
 /// What went wrong, already translated into the contract's words.
-class _Failure {
-  const _Failure._({
+@visibleForTesting
+class OfflineFailure {
+  const OfflineFailure._({
     this.inferenceCode,
     required this.stage,
     this.runtimeCode,
@@ -693,12 +726,12 @@ class _Failure {
   });
 
   /// Fits an offline_inference error (one of the five codes).
-  factory _Failure.inference(String code, String stage) =>
-      _Failure._(inferenceCode: code, stage: stage);
+  factory OfflineFailure.inference(String code, String stage) =>
+      OfflineFailure._(inferenceCode: code, stage: stage);
 
   /// Does not fit -> becomes a runtime_failure.
-  factory _Failure.runtime(String code, String type, String stage) =>
-      _Failure._(runtimeCode: code, failureKind: type, stage: stage);
+  factory OfflineFailure.runtime(String code, String type, String stage) =>
+      OfflineFailure._(runtimeCode: code, failureKind: type, stage: stage);
 
   final String? inferenceCode;
   final String stage;
