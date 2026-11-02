@@ -160,8 +160,8 @@ class NativeOfflineAiService {
             'session_id': sessionId,
             'chat_id': chatId,
             'message': message,
-            'tool_names': <String>[],                          // don't send the 12 KB tool list
-            'generation_options': {'max_output_tokens': 300}, // shorter answers finish faster. The trade-off is that offline mode won’t run the five tools (pregnancy dates, reminders, saving records, and so on). It will still answer questions using the local knowledge base.
+            // 'tool_names': <String>[],                          // don't send the 12 KB tool list
+            // 'generation_options': {'max_output_tokens': 300}, // shorter answers finish faster. The trade-off is that offline mode won’t run the five tools (pregnancy dates, reminders, saving records, and so on). It will still answer questions using the local knowledge base.
           });
         } on PlatformException catch (e) {
           fail(OfflineAiException(e.message ?? 'Could not start the answer.'));

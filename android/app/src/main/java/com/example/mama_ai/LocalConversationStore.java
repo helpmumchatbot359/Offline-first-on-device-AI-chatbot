@@ -29,10 +29,11 @@ final class LocalConversationStore {
                 + "ON conversation_messages(user_id, session_id, message_index)");
         database.execSQL("CREATE TABLE IF NOT EXISTS chat_turn_records ("
                 + "turn_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, user_id TEXT NOT NULL,"
-                + "session_id TEXT NOT NULL, created_at TEXT NOT NULL, safety_level TEXT NOT NULL,"
-                + "safety_reason TEXT NOT NULL, outcome TEXT NOT NULL, response_text TEXT,"
+                + "session_id TEXT NOT NULL, created_at TEXT NOT NULL, safety_level TEXT,"
+                + "safety_reason TEXT, outcome TEXT NOT NULL, response_text TEXT,"
                 + "context_ids_json TEXT NOT NULL, grounded INTEGER NOT NULL,"
                 + "UNIQUE(user_id, session_id, request_id))");
+        migrateNullableSafetyFields();
     }
 
     List<ChatMessage> load(String userId, String sessionId) {
@@ -81,19 +82,49 @@ final class LocalConversationStore {
         }
     }
 
-    void recordTurn(String requestId, String userId, String sessionId, String safetyLevel,
-                    String safetyReason, String outcome, String response,
+    void recordTurn(String requestId, String userId, String sessionId, String outcome, String response,
                     JsonArray contextIds, boolean grounded) {
         database.beginTransaction();
         try {
             database.execSQL("INSERT INTO chat_turn_records(turn_id,request_id,user_id,session_id,created_at,safety_level,safety_reason,outcome,response_text,context_ids_json,grounded) VALUES(?,?,?,?,?,?,?,?,?,?,?) "
                     + "ON CONFLICT(user_id,session_id,request_id) DO UPDATE SET "
-                    + "safety_level=excluded.safety_level, safety_reason=excluded.safety_reason, "
                     + "outcome=excluded.outcome, response_text=excluded.response_text, "
                     + "context_ids_json=excluded.context_ids_json, grounded=excluded.grounded",
                     new Object[]{"turn-" + java.util.UUID.randomUUID(), requestId, userId, sessionId,
-                            Instant.now().toString(), safetyLevel, safetyReason, outcome, response,
+                            Instant.now().toString(), null, null, outcome, response,
                             contextIds.toString(), grounded ? 1 : 0});
+            database.setTransactionSuccessful();
+        } finally {
+            database.endTransaction();
+        }
+    }
+
+    private void migrateNullableSafetyFields() {
+        boolean safetyLevelRequired = false;
+        boolean safetyReasonRequired = false;
+        try (Cursor cursor = database.rawQuery("PRAGMA table_info(chat_turn_records)", null)) {
+            while (cursor.moveToNext()) {
+                String name = cursor.getString(1);
+                boolean required = cursor.getInt(3) != 0;
+                if ("safety_level".equals(name)) safetyLevelRequired = required;
+                if ("safety_reason".equals(name)) safetyReasonRequired = required;
+            }
+        }
+        if (!safetyLevelRequired && !safetyReasonRequired) return;
+        database.beginTransaction();
+        try {
+            database.execSQL("CREATE TABLE chat_turn_records_migrated ("
+                    + "turn_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, user_id TEXT NOT NULL,"
+                    + "session_id TEXT NOT NULL, created_at TEXT NOT NULL, safety_level TEXT,"
+                    + "safety_reason TEXT, outcome TEXT NOT NULL, response_text TEXT,"
+                    + "context_ids_json TEXT NOT NULL, grounded INTEGER NOT NULL,"
+                    + "UNIQUE(user_id, session_id, request_id))");
+            database.execSQL("INSERT INTO chat_turn_records_migrated "
+                    + "SELECT turn_id, request_id, user_id, session_id, created_at, safety_level, "
+                    + "safety_reason, outcome, response_text, context_ids_json, grounded "
+                    + "FROM chat_turn_records");
+            database.execSQL("DROP TABLE chat_turn_records");
+            database.execSQL("ALTER TABLE chat_turn_records_migrated RENAME TO chat_turn_records");
             database.setTransactionSuccessful();
         } finally {
             database.endTransaction();

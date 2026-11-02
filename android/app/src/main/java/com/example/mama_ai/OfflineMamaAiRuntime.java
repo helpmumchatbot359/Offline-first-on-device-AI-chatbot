@@ -18,18 +18,17 @@ import com.google.ai.edge.litertlm.ResponseFormat;
 import com.google.ai.edge.litertlm.SamplerConfig;
 import com.google.ai.edge.litertlm.ThinkingConfig;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -51,21 +50,11 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
     private volatile String activeChatId;
     private String systemPrompt;
     private boolean prefillPreface;
-    /**
-     * Phase 1: how long we wait for the FIRST word. The phone must read the whole
-     * prompt before it can write anything, and that can be slow on weak devices.
-     */
+   
     private static final long FIRST_TOKEN_TIMEOUT_SECONDS = 240; // 4 minutes
-    /**
-     * Phase 2: as soon as the first word arrives the clock is RESET and the answer
-     * gets this much fresh time to finish writing. A slow phone is never cut off
-     * just because the first word came late.
-     */
+    
     private static final long STREAMING_BUDGET_SECONDS = 180; // 3 minutes
-    private static final String UNROUTED_SAFETY_LEVEL = "unrouted";
-    private static final String UNROUTED_SAFETY_REASON =
-            "No deterministic safety route is applied. The answer model must assess "
-                    + "the full question and retrieved evidence.";
+
 
     public OfflineMamaAiRuntime(Context context) {
         this.context = context.getApplicationContext();
@@ -120,8 +109,7 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
         }
     }
 
-    /** Generate one complete local turn and emit normalized runtime events. */
-    public void generate(JsonObject request, EventSink sink) {
+   public void generate(JsonObject request, EventSink sink) {
         if (engine == null || rag == null) throw new IllegalStateException("runtime is not initialized");
         cancelled = false;
         String requestId = string(request, "request_id", "request-" + System.nanoTime());
@@ -129,107 +117,59 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
         String sessionId = required(request, "session_id");
         String chatId = string(request, "chat_id", sessionId);
 
-        String activeStage = "model_load";
         int totalGeneratedTokens = 0;
-        List<LocalRagStore.RetrievedPassage> passages = new ArrayList<>();
-        JsonArray contextIds = new JsonArray();
-        JsonArray citations = new JsonArray();
+        String activeStage = "history_loading";
+        List<ChatMessage> supplied = parseMessages(request.getAsJsonArray("messages"));
+        if (supplied.isEmpty() && request.has("message")) {
+            supplied.add(ChatMessage.user(textContent(request.get("message"))));
+        }
+        if (supplied.isEmpty()) throw new IllegalArgumentException("at least one message is required");
+        ChatMessage current = supplied.get(supplied.size() - 1);
+        if (!"user".equals(current.role)) throw new IllegalArgumentException("last message must be a user message");
+        if (RuntimePolicy.count(current.content, null) > RuntimePolicy.MAX_INPUT_TOKENS) {
+            throw new IllegalArgumentException("the user message exceeds the package input boundary");
+        }
+        JsonObject started = event("started", requestId, chatId);
+        started.addProperty("session_id", sessionId);
+        started.addProperty("safety_pending", false);
+        emit(sink, started);
+        conversations.append(userId, sessionId, current);
+
+        List<ChatMessage> suppliedHistory = new ArrayList<>();
+        if (supplied.size() > 1) {
+            for (ChatMessage message : supplied.subList(0, supplied.size() - 1)) {
+                suppliedHistory.add(message.copy());
+            }
+        }
+        List<ChatMessage> stored = completedHistory(suppliedHistory);
+        if (stored.isEmpty()) stored = conversations.load(userId, sessionId);
+
+        activeStage = "system_prompt_building";
+        String callerSystem = request.has("system_message")
+                ? request.get("system_message").getAsString() : "";
+        String system = joinSystem(callerSystem, systemPrompt);
+        OfflineToolProvider tools = new OfflineToolProvider(
+                userId, sessionId, current.content, rag, assets);
+        List<JsonObject> toolSchemas = tools == null ? new ArrayList<>() : tools.schemas();
+        Conversation conversation = null;
         String finalText = "";
         boolean toolWasUsed = false;
-        Conversation conversation = null;
+        List<LocalRagStore.RetrievedPassage> passages = new ArrayList<>();
+        JsonArray contextIds = new JsonArray();
+        activeRequestId = requestId;
+        activeChatId = chatId;
 
+        activeStage = "generation";
         try {
-            activeStage = "model_load";
-            List<ChatMessage> supplied = parseMessages(request.getAsJsonArray("messages"));
-            if (supplied.isEmpty() && request.has("message")) {
-                supplied.add(ChatMessage.user(textContent(request.get("message"))));
-            }
-            if (supplied.isEmpty()) throw new IllegalArgumentException("at least one message is required");
-            ChatMessage current = supplied.get(supplied.size() - 1);
-            if (!"user".equals(current.role)) throw new IllegalArgumentException("last message must be a user message");
-            if (RuntimePolicy.count(current.content, null) > RuntimePolicy.MAX_INPUT_TOKENS) {
-                throw new IllegalArgumentException("the user message exceeds the package input boundary");
-            }
-
-            JsonObject started = event("started", requestId, chatId);
-            started.addProperty("session_id", sessionId);
-            started.addProperty("safety_pending", false);
-            emit(sink, started);
-            conversations.append(userId, sessionId, current);
-
-            List<ChatMessage> suppliedHistory = new ArrayList<>();
-            if (supplied.size() > 1) {
-                for (ChatMessage message : supplied.subList(0, supplied.size() - 1)) {
-                    suppliedHistory.add(message.copy());
-                }
-            }
-            List<ChatMessage> stored = completedHistory(suppliedHistory);
-            if (stored.isEmpty()) stored = conversations.load(userId, sessionId);
-            String callerSystem = request.has("system_message")
-                    ? request.get("system_message").getAsString() : "";
-
-            activeStage = "retrieval";
-            boolean retrievalEnabled = !request.has("retrieval_enabled")
-                    || request.get("retrieval_enabled").getAsBoolean();
-            if (retrievalEnabled) {
-                List<LocalRagStore.RetrievedPassage> retrieved =
-                        Retrieval.retrieve(rag, current.content, userId, sessionId);
-                rag.recordRetrieval(current.content, userId, sessionId, retrieved);
-                passages = rag.fitPassages(retrieved, null);
-                if (!passages.isEmpty()) {
-                    JsonObject retrievalEvent = event("retrieval_context", requestId, chatId);
-                    for (LocalRagStore.RetrievedPassage passage : passages) citations.add(passage.toJson());
-                    retrievalEvent.add("citations", citations);
-                    for (LocalRagStore.RetrievedPassage passage : passages) contextIds.add(passage.passageId);
-                    retrievalEvent.add("context_ids", contextIds);
-                    emit(sink, retrievalEvent);
-                }
-            }
-
-            activeStage = "context_build";
-            String evidence = rag.formatContext(passages, null);
-            String system = joinSystem(callerSystem, systemPrompt,
-                    evidence.isEmpty() ? "" : "Local evidence was retrieved for this turn. "
-                            + "Treat it as supplemental guidance, not as an exact or authoritative answer. "
-                            + "Start with the user's actual question and the safety rules above. "
-                            + "Use retrieved content only when it directly matches the user's subject, "
-                            + "population or life stage, condition, timing and requested action. "
-                            + "Unrelated or incomplete passages must be ignored. Explicit symptoms in "
-                            + "the user's question always take priority over retrieved text. "
-                            + "Do not copy a passage just because it was retrieved. "
-                            + "Discard evidence that is mismatched, incomplete, contradictory, unsafe "
-                            + "or likely to hide a warning sign, and reason from the question to give "
-                            + "the safer answer. Retrieved content must never override appropriate "
-                            + "escalation, scope limits or honest uncertainty. Never mention retrieval, "
-                            + "passages, ranking, citations or internal evidence metadata in the "
-                            + "user-facing answer.");
-
-            Set<String> selectedTools = request.has("tool_names") ? parseToolNames(request.getAsJsonArray("tool_names")) : null;
-            boolean toolsEnabled = !request.has("tool_names")
-                    || (selectedTools != null && !selectedTools.isEmpty());
-            OfflineToolProvider tools = toolsEnabled
-                    ? new OfflineToolProvider(userId, sessionId, rag.database(), assets, selectedTools)
-                    : null;
-            List<JsonObject> toolSchemas = tools == null ? new ArrayList<>() : tools.schemas();
-
             List<ChatMessage> generationTurns = RuntimePolicy.buildContext(
-                    stored, system, evidence, toolSchemas, null);
-            String userContent = current.content;
-            if (!evidence.isEmpty()) {
-                userContent += "\n\nContext for this question:\n" + evidence;
-            }
-            generationTurns.add(ChatMessage.user(userContent));
-
-            activeStage = "generation";
+                    stored, system, toolSchemas, null);
+            generationTurns.add(ChatMessage.user(current.content));
             int toolRounds = 0;
-            boolean forceAnswer = false;
-            int forcedAnswerAttempts = 0;
-            activeRequestId = requestId;
-            activeChatId = chatId;
-
+            boolean toolsDisabled = false;
             while (true) {
                 if (cancelled) throw new java.util.concurrent.CancellationException();
-                OfflineToolProvider activeTools = forceAnswer ? null : tools;
+                if (toolRounds >= RuntimePolicy.MAX_TOOL_ROUNDS) toolsDisabled = true;
+                OfflineToolProvider activeTools = toolsDisabled ? null : tools;
                 if (activeTools != null) activeTools.beginTurn(toolRounds + 1);
                 String prompt = RuntimePolicy.renderForPrompt(generationTurns, system);
                 ConversationConfig config = new ConversationConfig(
@@ -247,41 +187,19 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                         responseFormat(request) != null);
                 conversation = engine.createConversation(config);
                 activeConversation = conversation;
-                
                 StreamResult generated = streamWithRetries(conversation, prompt, requestId,
                         chatId, sink, activeTools, outputLimit(request), request, system, prefillPreface);
                 conversation = activeConversation;
                 totalGeneratedTokens += generated.tokenCount;
                 JsonArray toolRequests = generated.toolRequests;
-
                 if (toolRequests.size() > 0) {
+                    activeStage = "tool_calls";
                     JsonObject callEvent = event("tool_call_requested", requestId, chatId);
                     callEvent.add("tool_calls", toolRequests.deepCopy());
                     emit(sink, callEvent);
                     if (activeTools == null) {
-                        forcedAnswerAttempts++;
-                        if (forceAnswer && forcedAnswerAttempts >= 2) {
-                            toolRequests = new JsonArray();
-                            generated = new StreamResult(generated.text, toolRequests, generated.tokenCount);
-                        } else {
-                            generationTurns.add(ChatMessage.system(
-                                    "Answer the user directly now. Tool use is disabled for this final response; "
-                                            + "use the completed tool results already in the current turn and do not request another tool."));
-                            forceAnswer = true;
-                            closeConversation(conversation);
-                            conversation = null;
-                            activeConversation = null;
-                            continue;
-                        }
-                    } else if (toolRounds >= RuntimePolicy.MAX_TOOL_ROUNDS) {
-                        generationTurns.add(ChatMessage.system(
-                                "The maximum number of local tool-call rounds has been reached. "
-                                        + "Answer the user now using the completed tool results. Do not request another tool."));
-                        forceAnswer = true;
-                        closeConversation(conversation);
-                        conversation = null;
-                        activeConversation = null;
-                        continue;
+                        throw new IllegalStateException(
+                                "model returned a tool call after tool schemas were removed");
                     } else {
                         toolWasUsed = true;
                         toolRounds++;
@@ -297,11 +215,28 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                         activeTools.executeRequested(toolRequest.getAsJsonObject());
                     }
                     JsonArray toolResults = activeTools.drainCalls();
+                    List<LocalRagStore.RetrievedPassage> retrievedPassages =
+                            activeTools.drainRetrievalPassages();
+                    if (!retrievedPassages.isEmpty()) {
+                        activeStage = "retrieval_context";
+                        passages = retrievedPassages;
+                        contextIds = new JsonArray();
+                        JsonObject retrievalEvent = event("retrieval_context", requestId, chatId);
+                        JsonArray citations = new JsonArray();
+                        for (LocalRagStore.RetrievedPassage passage : passages) {
+                            citations.add(passage.toJson());
+                            contextIds.add(passage.passageId);
+                        }
+                        retrievalEvent.add("citations", citations);
+                        retrievalEvent.add("context_ids", contextIds.deepCopy());
+                        emit(sink, retrievalEvent);
+                    }
                     JsonObject resultEvent = event("tool_result", requestId, chatId);
                     resultEvent.add("tool_results", toolResults.deepCopy());
                     emit(sink, resultEvent);
                     finalText = generated.text;
                     ChatMessage toolAssistant = new ChatMessage();
+ 
                     toolAssistant.role = "assistant";
                     toolAssistant.content = generated.text.isEmpty() ? null : generated.text;
                     toolAssistant.toolCalls = toolRequests.deepCopy();
@@ -323,43 +258,39 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                 finalText = generated.text;
                 break;
             }
-
             ChatMessage assistant = new ChatMessage();
+            activeStage = "assistant_message"
             assistant.role = "assistant";
             assistant.content = finalText;
+            JsonArray citations = new JsonArray();
+            for (LocalRagStore.RetrievedPassage passage : passages) {
+                citations.add(passage.toJson());
+            }
             conversations.append(userId, sessionId, assistant, citations);
             boolean grounded = !passages.isEmpty();
             String outcome = grounded ? "grounded_answer"
                     : toolWasUsed ? "tool_answer"
-                    : retrievalEnabled ? "unsupported"
                     : "ungrounded_answer";
             conversations.recordTurn(requestId, userId, sessionId,
-                    UNROUTED_SAFETY_LEVEL, UNROUTED_SAFETY_REASON,
                     outcome, finalText, contextIds, grounded);
-
             JsonObject completed = event("completed", requestId, chatId);
             completed.addProperty("text", finalText);
-            completed.addProperty("safety_level", UNROUTED_SAFETY_LEVEL);
             completed.addProperty("grounded", grounded);
-            completed.addProperty("output_tokens", totalGeneratedTokens > 0 ? totalGeneratedTokens : RuntimePolicy.count(finalText, null));
-            completed.addProperty("retrieved_passage_count", passages.size());
             completed.add("context_ids", contextIds);
             completed.add("citations", citations);
             emit(sink, completed);
-
         } catch (java.util.concurrent.CancellationException exception) {
             conversations.recordTurn(requestId, userId, sessionId,
-                    UNROUTED_SAFETY_LEVEL, UNROUTED_SAFETY_REASON,
                     "cancelled", finalText, contextIds, false);
             emit(sink, event("cancelled", requestId, chatId));
         } catch (Throwable throwable) {
             conversations.recordTurn(requestId, userId, sessionId,
-                    UNROUTED_SAFETY_LEVEL, UNROUTED_SAFETY_REASON,
                     "error", finalText, contextIds, false);
             JsonObject error = event("error", requestId, chatId);
             error.addProperty("error_type", throwable.getClass().getName());
-            error.addProperty("error", throwable.getMessage() == null ? throwable.toString() : throwable.getMessage());
-            error.addProperty("error_stage", activeStage); // Reports exact stage where failure occurred
+            error.addProperty("error", throwable.getMessage() == null ? throwable.toString()
+             : throwable.getMessage());
+            error.addProperty("error_stage", activeStage);
             emit(sink, error);
         } finally {
             Conversation active = activeConversation;
@@ -405,17 +336,16 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
         rag.deleteDocument(documentId, userId, sessionId);
     }
 
-    private StreamResult stream(Conversation conversation, String prompt, String requestId,
+   private StreamResult stream(Conversation conversation, String prompt, String requestId,
                                 String chatId, EventSink sink, OfflineToolProvider tools,
                                 int outputLimit, ResponseFormat responseFormat) throws InterruptedException {
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
+        AtomicBoolean responseStarted = new AtomicBoolean(false);
+        AtomicLong responseStartedAtNs = new AtomicLong();
         StringBuilder output = new StringBuilder();
         JsonArray toolRequests = new JsonArray();
         int[] emittedTokens = {0};
-        // Set the moment the model produces its first output (text OR a tool call).
-        AtomicBoolean responseStarted = new AtomicBoolean(false);
-        AtomicLong responseStartedAtNs = new AtomicLong(0);
 
         conversation.sendMessageAsync(prompt, new MessageCallback() {
             @Override public void onMessage(Message message) {
@@ -426,14 +356,25 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                 if (message.getToolCalls() != null) {
                     for (com.google.ai.edge.litertlm.ToolCall toolCall : message.getToolCalls()) {
                         JsonObject rawCall = toolCall.toJson$third_party_odml_litert_lm_kotlin_java_com_google_ai_edge_litertlm_litertlm_android();
+                        JsonObject rawFunction = rawCall.has("function")
+                                && rawCall.get("function").isJsonObject()
+                                ? rawCall.getAsJsonObject("function") : rawCall;
                         JsonObject normalized = new JsonObject();
                         normalized.addProperty("type", "function");
                         JsonObject function = new JsonObject();
                         if (rawCall.has("id")) normalized.add("id", rawCall.get("id").deepCopy());
-                        function.addProperty("name", rawCall.get("name").getAsString());
-                        function.add("arguments", rawCall.get("arguments").deepCopy());
+                        JsonElement rawName = rawFunction.get("name");
+                        JsonElement rawArguments = rawFunction.get("arguments");
+                        if (rawName == null || rawName.isJsonNull()
+                                || rawArguments == null || rawArguments.isJsonNull()) {
+                            throw new IllegalArgumentException("LiteRT returned an incomplete tool call");
+                        }
+                        function.addProperty("name", rawName.getAsString());
+                        function.add("arguments", rawArguments.deepCopy());
                         normalized.add("function", function);
-                        toolRequests.add(normalized);
+                        synchronized (output) {
+                            toolRequests.add(normalized);
+                        }
                     }
                 }
                 String text = message.getToolCalls() == null || message.getToolCalls().isEmpty()
@@ -442,8 +383,11 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                     int remaining = outputLimit - emittedTokens[0];
                     String bounded = RuntimePolicy.truncate(text, remaining, null);
                     if (!bounded.isEmpty()) {
-                        synchronized (output) { output.append(bounded); }
-                        emittedTokens[0] += RuntimePolicy.count(bounded, null);
+                        synchronized (output) {
+                            output.append(bounded);
+                            emittedTokens[0] += RuntimePolicy.count(bounded, null);
+                        }
+
                         JsonObject token = event("token", requestId, chatId);
                         token.addProperty("text", bounded);
                         emit(sink, token);
@@ -454,48 +398,48 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
             @Override public void onError(Throwable throwable) { failure.set(throwable); done.countDown(); }
         }, Collections.emptyMap(), null, null, null, outputLimit,
                 new ThinkingConfig(false), responseFormat);
-                
-        // Two-phase timeout (instead of one fixed 240 s clock):
-        //   phase 1: no output yet   -> allow FIRST_TOKEN_TIMEOUT_SECONDS for the first word
-        //   phase 2: output flowing  -> the clock restarts, STREAMING_BUDGET_SECONDS to finish
+
         final long waitBeganNs = System.nanoTime();
         boolean timedOut = false;
         while (!done.await(250, TimeUnit.MILLISECONDS)) {
             boolean started = responseStarted.get();
             long now = System.nanoTime();
             long elapsedNs = started ? now - responseStartedAtNs.get() : now - waitBeganNs;
-            long limitSeconds = started ? STREAMING_BUDGET_SECONDS : FIRST_TOKEN_TIMEOUT_SECONDS;
+            long limitSeconds = started
+                    ? RuntimePolicy.STREAMING_BUDGET_SECONDS
+                    : RuntimePolicy.FIRST_TOKEN_TIMEOUT_SECONDS;
             if (elapsedNs >= TimeUnit.SECONDS.toNanos(limitSeconds)) {
                 timedOut = true;
                 break;
             }
         }
         if (timedOut) {
-            // Stop the model so it does not keep burning battery in the background.
             try { conversation.cancelProcess(); } catch (Throwable ignored) {}
             String partial;
             synchronized (output) { partial = output.toString(); }
             if (partial.isEmpty()) {
                 throw new IllegalStateException("local generation timed out");
             }
-            // Words were already streaming to the screen: KEEP them as the answer
-            // instead of throwing an error that would wipe out what the person read.
-            return new StreamResult(RuntimePolicy.truncate(partial, outputLimit, null),
-                    new JsonArray(), emittedTokens[0]);
+            return new StreamResult(
+                    RuntimePolicy.truncate(partial, outputLimit, null),
+                    toolRequests, emittedTokens[0]);
         }
         if (failure.get() != null) {
             boolean nothingYet;
-            synchronized (output) { nothingYet = output.length() == 0; }
-            if (nothingYet && toolRequests.isEmpty()) {
+            synchronized (output) {
+                nothingYet = output.length() == 0 && toolRequests.isEmpty();
+            }
+            if (nothingYet) {
                 throw new RetryableGenerationException(failure.get());
             }
             throw new IllegalStateException("local generation failed", failure.get());
         }
         String finalOutput;
         synchronized (output) { finalOutput = output.toString(); }
-        return new StreamResult(RuntimePolicy.truncate(finalOutput, outputLimit, null), toolRequests, emittedTokens[0]);
+        return new StreamResult(
+                RuntimePolicy.truncate(finalOutput, outputLimit, null),
+                toolRequests, emittedTokens[0]);
     }
-
     private StreamResult streamWithRetries(Conversation conversation, String prompt,
                                            String requestId, String chatId, EventSink sink,
                                            OfflineToolProvider tools, int outputLimit,
@@ -624,11 +568,6 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                 || (value.isJsonArray() && value.getAsJsonArray().isEmpty());
     }
 
-    private static Set<String> parseToolNames(JsonArray array) {
-        Set<String> result = new HashSet<>();
-        if (array != null) for (JsonElement element : array) result.add(element.getAsString());
-        return result;
-    }
 
     private static String textContent(JsonElement content) {
         if (content.isJsonPrimitive()) return content.getAsString();
@@ -675,8 +614,9 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                 return result.toString().trim();
             } catch (IOException ignored) { /* try next location */ }
         }
-        android.util.Log.w("MamaAi", "Asset not found in any folder: " + name + " (using fallback prompt)");
-        return "You are an offline maternal-health assistant. Answer safely, concisely, and do not invent facts.";
+        android.util.Log.w("MamaAi", "Asset not found in any folder: " + name);
+        throw new IllegalStateException(
+            "Required asset not found in any location: " + name);
     }
 
     private void ensureKnowledgeFile(String knowledgePath) {

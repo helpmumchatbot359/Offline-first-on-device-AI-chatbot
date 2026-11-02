@@ -25,6 +25,8 @@ final class RuntimePolicy {
     static final int MAX_TOOL_ARGUMENT_TOKENS = 256;      // was 1024
     static final int MAX_RETRIEVED_PASSAGES = 2;          // was 3
     static final int MAX_RETRIEVED_CONTEXT_TOKENS = 400;  // was 1024
+    static final int FIRST_TOKEN_TIMEOUT_SECONDS = 120;
+    static final int STREAMING_BUDGET_SECONDS = 120
 
     interface TokenCounter {
         int count(String text);
@@ -100,11 +102,9 @@ final class RuntimePolicy {
     static List<ChatMessage> buildContext(
             List<ChatMessage> stored,
             String system,
-            String retrievedContext,
             List<JsonObject> toolSchemas,
             TokenCounter counter) {
         String fixed = (system == null ? "" : system)
-                + (retrievedContext == null ? "" : retrievedContext)
                 + (toolSchemas == null ? "" : toolSchemas.toString());
         int available = Math.max(0, MAX_CONTEXT_TOKENS - MAX_OUTPUT_TOKENS - count(fixed, counter));
         available = Math.min(available, MAX_HISTORY_TOKENS);
@@ -133,8 +133,6 @@ final class RuntimePolicy {
             output.append(message.content == null ? "" : message.content);
         }
         
-        // CRITICAL FIX: Prompt the local model to start generating the assistant response immediately.
-        // Prevents the offline model from hanging indefinitely or hitting timeout errors on simple greetings.
         output.append("\n\nAssistant:");
         
         return output.toString();
