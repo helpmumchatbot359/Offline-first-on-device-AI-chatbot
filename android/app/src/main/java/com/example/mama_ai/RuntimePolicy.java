@@ -26,7 +26,7 @@ final class RuntimePolicy {
     static final int MAX_RETRIEVED_PASSAGES = 2;          // was 3
     static final int MAX_RETRIEVED_CONTEXT_TOKENS = 400;  // was 1024
     static final int FIRST_TOKEN_TIMEOUT_SECONDS = 120;
-    static final int STREAMING_BUDGET_SECONDS = 120
+    static final int STREAMING_BUDGET_SECONDS = 120;
 
     interface TokenCounter {
         int count(String text);

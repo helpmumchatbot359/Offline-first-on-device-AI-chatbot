@@ -10,8 +10,6 @@ import com.google.ai.edge.litertlm.InternalJsonTool;
 import com.google.ai.edge.litertlm.ToolProvider;
 
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -127,15 +125,44 @@ final class OfflineToolProvider extends ToolProvider {
                         handler);
             }
         }
-        throw new IllegalStateException("Missing tool contract entry: " + name);
+        throw new ContractLoadException(
+                "Offline setup problem (no tool was run): the tool contract does not contain the '"
+                        + name + "' tool.", null);
+    }
+
+    /**
+     * Every place the shared contract may live, first match wins.
+     *
+     * WHY: the package puts the file at assets/contracts/tool_contract.json,
+     * but older builds copied it flat into the assets root. Looking only at
+     * one of those two locations is what caused "Unable to load shared tool
+     * contract" even though the file was present in the APK.
+     */
+    private static final String[] CONTRACT_PATHS = {
+            "contracts/tool_contract.json",
+            "tool_contract.json",
+            "flutter_assets/assets/contracts/tool_contract.json",
+            "flutter_assets/assets/tool_contract.json"
+    };
+
+    /**
+     * A setup problem: no tool has run yet. Telemetry must NOT call this a
+     * tool error (TOOL_ERROR), because that would mean a tool actually ran.
+     */
+    static final class ContractLoadException extends IllegalStateException {
+        ContractLoadException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     private static JsonObject loadContract(AssetManager assets) {
-        try (InputStreamReader reader = new InputStreamReader(
-                assets.open("tool_contract.json"), StandardCharsets.UTF_8)) {
-            return JsonParser.parseReader(reader).getAsJsonObject();
+        try {
+            String text = AssetText.read(assets, CONTRACT_PATHS);
+            return JsonParser.parseString(text).getAsJsonObject();
         } catch (IOException | RuntimeException exception) {
-            throw new IllegalStateException("Unable to load shared tool contract", exception);
+            throw new ContractLoadException(
+                    "Offline setup problem (no tool was run): the tool contract could not be loaded. "
+                            + exception.getMessage(), exception);
         }
     }
 

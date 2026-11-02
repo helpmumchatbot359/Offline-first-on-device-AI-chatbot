@@ -148,9 +148,10 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
         String callerSystem = request.has("system_message")
                 ? request.get("system_message").getAsString() : "";
         String system = joinSystem(callerSystem, systemPrompt);
-        OfflineToolProvider tools = new OfflineToolProvider(
-                userId, sessionId, current.content, rag, assets);
-        List<JsonObject> toolSchemas = tools == null ? new ArrayList<>() : tools.schemas();
+        // The tool provider is created INSIDE the try block below. If its setup
+        // fails (for example the contract asset is missing), that problem is
+        // reported as a normal "error" event instead of escaping the method.
+        OfflineToolProvider tools = null;
         Conversation conversation = null;
         String finalText = "";
         boolean toolWasUsed = false;
@@ -159,8 +160,11 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
         activeRequestId = requestId;
         activeChatId = chatId;
 
-        activeStage = "generation";
         try {
+            tools = new OfflineToolProvider(
+                    userId, sessionId, current.content, rag, assets);
+            List<JsonObject> toolSchemas = tools.schemas();
+            activeStage = "generation";
             List<ChatMessage> generationTurns = RuntimePolicy.buildContext(
                     stored, system, toolSchemas, null);
             generationTurns.add(ChatMessage.user(current.content));
@@ -259,7 +263,7 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                 break;
             }
             ChatMessage assistant = new ChatMessage();
-            activeStage = "assistant_message"
+            activeStage = "assistant_message";
             assistant.role = "assistant";
             assistant.content = finalText;
             JsonArray citations = new JsonArray();
