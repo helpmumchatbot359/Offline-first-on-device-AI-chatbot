@@ -155,6 +155,7 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
         Conversation conversation = null;
         String finalText = "";
         boolean toolWasUsed = false;
+        boolean toolFailed = false;
         List<LocalRagStore.RetrievedPassage> passages = new ArrayList<>();
         JsonArray contextIds = new JsonArray();
         activeRequestId = requestId;
@@ -172,6 +173,7 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
             boolean toolsDisabled = false;
             while (true) {
                 if (cancelled) throw new java.util.concurrent.CancellationException();
+                activeStage = "generation";
                 if (toolRounds >= RuntimePolicy.MAX_TOOL_ROUNDS) toolsDisabled = true;
                 OfflineToolProvider activeTools = toolsDisabled ? null : tools;
                 if (activeTools != null) activeTools.beginTurn(toolRounds + 1);
@@ -219,6 +221,7 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                         activeTools.executeRequested(toolRequest.getAsJsonObject());
                     }
                     JsonArray toolResults = activeTools.drainCalls();
+                    if (containsToolError(toolResults)) toolFailed = true;
                     List<LocalRagStore.RetrievedPassage> retrievedPassages =
                             activeTools.drainRetrievalPassages();
                     if (!retrievedPassages.isEmpty()) {
@@ -233,10 +236,15 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                         }
                         retrievalEvent.add("citations", citations);
                         retrievalEvent.add("context_ids", contextIds.deepCopy());
+                        retrievalEvent.addProperty("retrieved_passage_count", passages.size());
+                        retrievalEvent.addProperty("tool_used", true);
                         emit(sink, retrievalEvent);
                     }
                     JsonObject resultEvent = event("tool_result", requestId, chatId);
                     resultEvent.add("tool_results", toolResults.deepCopy());
+                    resultEvent.addProperty("tool_used", toolWasUsed);
+                    resultEvent.addProperty("retrieved_passage_count", passages.size());
+                    resultEvent.addProperty("tool_error", toolFailed);
                     emit(sink, resultEvent);
                     finalText = generated.text;
                     ChatMessage toolAssistant = new ChatMessage();
@@ -280,13 +288,26 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
             JsonObject completed = event("completed", requestId, chatId);
             completed.addProperty("text", finalText);
             completed.addProperty("grounded", grounded);
+            // Telemetry facts: the Flutter layer copies these straight into
+            // offline_inference.metadata.
+            completed.addProperty("tool_used", toolWasUsed);
+            completed.addProperty("tool_error", toolFailed);
+            completed.addProperty("retrieved_passage_count", passages.size());
+            completed.addProperty("output_tokens", totalGeneratedTokens);
+            completed.addProperty("streamed", true);
             completed.add("context_ids", contextIds);
             completed.add("citations", citations);
             emit(sink, completed);
         } catch (java.util.concurrent.CancellationException exception) {
             conversations.recordTurn(requestId, userId, sessionId,
                     "cancelled", finalText, contextIds, false);
-            emit(sink, event("cancelled", requestId, chatId));
+            JsonObject cancelled = event("cancelled", requestId, chatId);
+            cancelled.addProperty("error_code", "CANCELLED");
+            cancelled.addProperty("tool_used", toolWasUsed);
+            cancelled.addProperty("tool_error", toolFailed);
+            cancelled.addProperty("retrieved_passage_count", passages.size());
+            cancelled.addProperty("output_tokens", totalGeneratedTokens);
+            emit(sink, cancelled);
         } catch (Throwable throwable) {
             conversations.recordTurn(requestId, userId, sessionId,
                     "error", finalText, contextIds, false);
@@ -294,7 +315,12 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
             error.addProperty("error_type", throwable.getClass().getName());
             error.addProperty("error", throwable.getMessage() == null ? throwable.toString()
              : throwable.getMessage());
-            error.addProperty("error_stage", activeStage);
+            error.addProperty("error_stage", contractStage(activeStage));
+            error.addProperty("tool_used", toolWasUsed);
+            error.addProperty("tool_error", toolFailed);
+            error.addProperty("retrieved_passage_count", passages.size());
+            String errorCode = inferenceErrorCode(toolFailed, throwable);
+            if (errorCode != null) error.addProperty("error_code", errorCode);
             emit(sink, error);
         } finally {
             Conversation active = activeConversation;
@@ -593,6 +619,50 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
         result.addProperty("request_id", requestId);
         result.addProperty("chat_id", chatId);
         return result;
+    }
+
+    /** A tool result object shaped {"result":{"error":...}} means the tool failed. */
+    private static boolean containsToolError(JsonArray toolResults) {
+        if (toolResults == null) return false;
+        for (JsonElement element : toolResults) {
+            if (!element.isJsonObject()) continue;
+            JsonObject call = element.getAsJsonObject();
+            JsonElement result = call.get("result");
+            if (result != null && result.isJsonObject()
+                    && result.getAsJsonObject().has("error")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Maps internal stage names to the words allowed by the telemetry contract. */
+    private static String contractStage(String stage) {
+        if (stage == null) return "generation";
+        switch (stage) {
+            case "history_loading":
+            case "system_prompt_building":
+                return "context_build";
+            case "tool_calls":
+                return "tool_execution";
+            case "retrieval_context":
+                return "retrieval";
+            case "model_load":
+                return "model_load";
+            default:
+                return "generation";
+        }
+    }
+
+    /** Best-effort error code; null means "let the Flutter layer classify it". */
+    private static String inferenceErrorCode(boolean toolFailed, Throwable throwable) {
+        if (toolFailed) return "TOOL_ERROR";
+        String message = throwable.getMessage() == null
+                ? throwable.toString() : throwable.getMessage().toLowerCase(java.util.Locale.ROOT);
+        if (message.contains("timed out") || message.contains("timeout")) {
+            return "GENERATION_TIMEOUT";
+        }
+        return null;
     }
 
     private static void emit(EventSink sink, JsonObject event) { if (sink != null) sink.emit(event); }

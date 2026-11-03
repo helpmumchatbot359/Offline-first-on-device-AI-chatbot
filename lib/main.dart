@@ -14,6 +14,7 @@ import 'features/chat/data/chat_repository_impl.dart';
 import 'features/chat/data/local/chat_local_data_source.dart';
 import 'features/chat/data/local/diagnostic_logger.dart';
 import 'features/chat/data/sync/sync_service.dart';
+import 'features/chat/data/telemetry/device_telemetry.dart'; // TELEMETRY: device envelope
 import 'features/chat/data/telemetry/telemetry_recorder.dart'; // TELEMETRY: new
 
 Future<void> main() async {
@@ -38,10 +39,21 @@ Future<void> main() async {
   // Answers that were cut off when Android closed the app last time: rescue them
   // BEFORE the chat screen loads its history.
   await localDataSource.recoverInterruptedTurns();
-  final diagnosticLogger = DiagnosticLogger();
+
+  // TELEMETRY / DIAGNOSTICS: one shared reader for phone facts.
+  // DeviceTelemetry reads manufacturer/model/RAM/memory/PSS/thermal/battery
+  // through the native "mama_ai/device_info" channel.
+  final deviceTelemetry = DeviceTelemetry(backend: 'cpu');
+
+  // The SAME reader is given to the diagnostic logger, so every record sent to
+  // /v1/diagnostic-logs also contains the device/runtime block.
+  final diagnosticLogger = DiagnosticLogger(deviceTelemetry: deviceTelemetry);
 
   // TELEMETRY: the one object that creates telemetry events.
-  final telemetry = TelemetryRecorder(localDataSource);
+  final telemetry = TelemetryRecorder(
+    localDataSource,
+    deviceTelemetry: deviceTelemetry,
+  );
   // If the app died in the middle of an on-phone answer last time (crash /
   // Android killed it for memory), record a runtime_failure NOW, before the
   // first sync, so it is uploaded together with everything else.

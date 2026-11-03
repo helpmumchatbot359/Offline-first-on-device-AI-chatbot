@@ -6,6 +6,9 @@ import androidx.annotation.NonNull;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -18,20 +21,42 @@ import io.flutter.plugin.common.MethodChannel;
 public final class MainActivity extends FlutterActivity {
     private static final String METHOD_CHANNEL = "mama_ai/offline_ai";
     private static final String EVENT_CHANNEL = "mama_ai/offline_ai_events";
+    private static final String DEVICE_CHANNEL = "mama_ai/device_info";
 
     private final Gson gson = new Gson();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private OfflineAiBridge offlineAiBridge;
+    private DeviceTelemetry deviceTelemetry;
     private volatile EventChannel.EventSink eventSink;
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
         super.configureFlutterEngine(flutterEngine);
         offlineAiBridge = new OfflineAiBridge(this);
+        deviceTelemetry = new DeviceTelemetry(this);
 
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), METHOD_CHANNEL)
                 .setMethodCallHandler(this::handleMethodCall);
+
+        // Telemetry device envelope (RAM, PSS, thermal, battery, model...).
+        new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), DEVICE_CHANNEL)
+                .setMethodCallHandler((call, result) -> {
+                    switch (call.method) {
+                        case "snapshot":
+                            try {
+                                String backend = call.argument("backend");
+                                JsonObject snapshot = deviceTelemetry.snapshot(
+                                        backend == null ? "cpu" : backend);
+                                result.success(toFlutterValue(snapshot));
+                            } catch (Throwable error) {
+                                result.error("DEVICE_INFO_ERROR", error.getMessage(), null);
+                            }
+                            break;
+                        default:
+                            result.notImplemented();
+                    }
+                });
 
         new EventChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), EVENT_CHANNEL)
                 .setStreamHandler(new EventChannel.StreamHandler() {
@@ -123,7 +148,38 @@ public final class MainActivity extends FlutterActivity {
     }
 
     private Object toFlutterValue(JsonElement value) {
-        return gson.fromJson(value, Object.class);
+        if (value == null || value.isJsonNull()) return null;
+        if (value.isJsonObject()) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            for (Map.Entry<String, JsonElement> entry : value.getAsJsonObject().entrySet()) {
+                map.put(entry.getKey(), toFlutterValue(entry.getValue()));
+            }
+            return map;
+        }
+        if (value.isJsonArray()) {
+            List<Object> list = new ArrayList<>();
+            for (JsonElement item : value.getAsJsonArray()) list.add(toFlutterValue(item));
+            return list;
+        }
+        // Keep integers as integers. gson.fromJson(..., Object.class) turns
+        // EVERY number into a Double (android_api 31 becomes 31.0), which makes
+        // the telemetry metadata look wrong to the backend.
+        var primitive = value.getAsJsonPrimitive();
+        if (primitive.isBoolean()) return primitive.getAsBoolean();
+        if (primitive.isNumber()) {
+            String raw = primitive.getAsString();
+            boolean wholeNumber = raw.indexOf('.') < 0
+                    && raw.indexOf('e') < 0 && raw.indexOf('E') < 0;
+            if (wholeNumber) {
+                try {
+                    return Long.parseLong(raw);
+                } catch (NumberFormatException ignored) {
+                    // Fall through to double for very large values.
+                }
+            }
+            return primitive.getAsDouble();
+        }
+        return primitive.getAsString();
     }
 
     @Override

@@ -1,6 +1,6 @@
 {
   "corpus_id": "mamabot-internal-medical-knowledge",
-  "package_version": "sha256-b90a48e0a19c9294843aa2023555d9947083895e6af4a6f7143fbbd2eac351c6",
+  "package_version": "sha256-07f97f28dfb1b30056fa0fc09b0a65eb01240cddc179649c28d596d121bb5abd",
   "package_schema_version": "1",
   "compatibility": {
     "retrieval_contract_version": "1",
@@ -35,34 +35,12 @@
     "external_license": null
   },
   "scope": {
-    "description": "Revised MamaBot/Vax AI question-and-answer package for local maternal-health RAG.",
+    "description": "Internal MamaBot/Vax AI question-and-answer export retained in full for local RAG preparation.",
     "retrieval_mode": "on_device_local_only",
     "clinical_content_status": "internal_existing_corpus",
     "record_shape": "question_and_answer_flattened_into_metadata.additional_info",
-    "package_filtering": "scope, safety, schedule and duplicate curation",
+    "package_filtering": "none",
     "separate_clinical_review_record": null
-  },
-  "package_lineage": {
-    "source_export_record_count": 36636,
-    "active_database": {
-      "path": "knowledge.sqlite3",
-      "record_count": 21673,
-      "status": "active"
-    },
-    "original_36k_database": {
-      "path": "knowledge-36k.sqlite3",
-      "record_count": 36636,
-      "sha256": "1b405e80b8b70ec211e81713485e152ecdcf47c15e0eb5c9dcc39607901171ba",
-      "size_bytes": 27107328,
-      "status": "retained comparison package"
-    },
-    "revised_database": {
-      "path": "knowledge.sqlite3",
-      "record_count": 24522,
-      "sha256": "0a3856a6bf17727ded8570a1241052f23176a1dc8b1c93afafd96c9370ab9bad",
-      "size_bytes": 24485888,
-      "status": "retained comparison package"
-    }
   },
   "canonical_file": {
     "path": "mamabot-knowledge-records.jsonl",
@@ -100,7 +78,7 @@
     "passage_id_policy": "record-{record_id}",
     "search_method": "sqlite_fts5_bm25",
     "indexed_fields": "question,answer",
-    "filtering": "deterministic metadata and requested-action compatibility",
+    "filtering": "none",
     "embedding_assets": "none",
     "runtime_database": {
       "path": "../runtime/runtime.sqlite3",
@@ -134,18 +112,18 @@
       "content_policy": "document_content_is_not_copied_into_events",
       "telemetry_sync_column": "synced_at"
     },
-    "record_count": 21673,
+    "record_count": 36636,
     "question_answer_character_count": {
-      "minimum": 97,
-      "maximum": 1858,
-      "average": 602.83
+      "minimum": 0,
+      "maximum": 1498,
+      "average": 404.13
     },
     "index": {
       "path": "knowledge.sqlite3",
       "format": "sqlite_fts5",
-      "sha256": "b90a48e0a19c9294843aa2023555d9947083895e6af4a6f7143fbbd2eac351c6",
-      "size_bytes": 28741632,
-      "sqlite_page_count": 7017,
+      "sha256": "1b405e80b8b70ec211e81713485e152ecdcf47c15e0eb5c9dcc39607901171ba",
+      "size_bytes": 27107328,
+      "sqlite_page_count": 6618,
       "sqlite_page_size": 4096
     }
   }

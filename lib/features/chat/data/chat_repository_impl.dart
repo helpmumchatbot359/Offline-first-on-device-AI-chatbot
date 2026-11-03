@@ -20,6 +20,7 @@ import '../../../core/config/env.dart';
 import '../../../core/security/token_storage.dart';
 import 'local/chat_local_data_source.dart';
 import 'local/diagnostic_logger.dart';
+import 'telemetry/device_telemetry.dart';
 import 'telemetry/telemetry_recorder.dart';
 import 'package:uuid/uuid.dart';
 
@@ -120,7 +121,10 @@ class ChatRepositoryImpl implements ChatRepository {
     final overall = Stopwatch()..start(); // only for the separate diagnostic log
 
     // TELEMETRY bookkeeping (only used when the on-phone model is involved)
-    final run = OfflineRun(); // collects real measurements from the phone model
+    final run = OfflineRun(
+      // Samples memory/thermal/battery while this answer runs.
+      envelope: DeviceEnvelopeSampler(telemetry.deviceTelemetry),
+    ); // collects real measurements from the phone model
     var offlineAttempted = false; // was the on-phone model asked at all?
     var reachedTheEnd = false; // false = the screen closed in the middle
     OfflineFailure? failure; // why the on-phone model failed (if it did)
@@ -276,11 +280,25 @@ class ChatRepositoryImpl implements ChatRepository {
     }
 
     // Separate local diagnostic log (not part of the telemetry contract).
+    // It now carries the SAME device/runtime envelope as telemetry:
+    //   * device: model, total RAM, RAM class, CPU/ABI, backend
+    //   * memory: available at start, process PSS at start, PEAK process PSS
+    //   * thermal: status/headroom at start and end
+    //   * battery: percent, temperature, charging
+    //   * model_load_ms: how long the 2.5 GB model took to load
+    // The measured values come from the sampler that was running during the
+    // answer. For a cloud-only answer there is no sampler data, so the logger
+    // fills in a live snapshot instead.
+    final runtimeDiagnostics = offlineAttempted
+        ? await run.envelope.metadata()
+        : const <String, Object?>{};
     diagnosticLogger.logEvent(
       logType: 'inference_measurement',
       metrics: {
         'latency_ms': overall.elapsedMilliseconds,
         'success': success,
+        if (run.modelLoadMs != null) 'model_load_ms': run.modelLoadMs,
+        ...runtimeDiagnostics,
       },
     );
 
@@ -305,7 +323,8 @@ class ChatRepositoryImpl implements ChatRepository {
     required OfflineFailure? failure,
   }) async {
     final latencyMs = run.clock.elapsedMilliseconds; // on-phone time only
-    final responseMetadata = run.responseMetadata();
+    // Stops the sampler, then returns measurements + device envelope.
+    final responseMetadata = await run.fullResponseMetadata();
 
     // A tool FAILED while it was running, even though the model still wrote an
     // answer. The contract still wants: outcome "error", TOOL_ERROR, tool_execution
@@ -352,6 +371,7 @@ class ChatRepositoryImpl implements ChatRepository {
         failureType: failure.failureKind!,
         failureStage: failure.runtimeStage,
         connectivity: isOnline ? 'online' : 'offline',
+        extraMetadata: responseMetadata,
       );
     }
   }
@@ -469,6 +489,7 @@ class ChatRepositoryImpl implements ChatRepository {
     OfflineRun run, {
     required bool isOnline,
   }) async* {
+    await run.envelope.start(); // begin sampling memory/thermal/battery
     run.clock.start(); // latency = from here until the answer ends
     run.stage = 'model_load';
 
@@ -497,6 +518,9 @@ class ChatRepositoryImpl implements ChatRepository {
       ),
       stop.future,
     ]);
+    // The 2.5 GB model is now in memory: this is how long loading took.
+    run.modelLoadMs = run.clock.elapsedMilliseconds;
+    run.generationStartedMs = run.clock.elapsedMilliseconds;
     if (stop.isCompleted) return;
 
     run.stage = 'generation';
@@ -617,16 +641,30 @@ class ChatRepositoryImpl implements ChatRepository {
 /// Collects REAL measurements while the on-phone model works.
 @visibleForTesting
 class OfflineRun {
+  OfflineRun({DeviceEnvelopeSampler? envelope})
+      : envelope = envelope ?? DeviceEnvelopeSampler(DeviceTelemetry());
+
+  /// Samples the phone's memory/thermal/battery while this answer runs.
+  final DeviceEnvelopeSampler envelope;
+
   /// Runs only while the on-phone model is busy (the cloud is not included).
   final Stopwatch clock = Stopwatch();
 
   /// Where we are right now (a word from the contract's error_stage list).
   String stage = 'model_load';
 
-  int? firstTokenMs; // time to first token
-  int? lastTokenMs;
+  /// Time spent loading the 2.5 GB model before generation could start.
+  int? modelLoadMs;
+
+  /// Clock value when generation (not model loading) began. Timings below are
+  /// measured from this point so "time to first token" means what it says.
+  int? generationStartedMs;
+
+  int? firstTokenMs; // time to first token, counted from generation start
+  int? lastTokenMs; // time the last token arrived, from generation start
+  int? outputChars = 0; // how many characters were streamed
   int? nativeOutputTokens; // ONLY set when Android itself reports a count
-  int? retrievedPassageCount; // ONLY set when Android reports it
+  int? retrievedPassageCount; // how many passages retrieval returned
   bool toolUsed = false;
   bool toolFailed = false; // a tool call really failed while executing
   bool streamed = false;
@@ -636,6 +674,7 @@ class OfflineRun {
 
   void observe(AiEvent event) {
     final now = clock.elapsedMilliseconds;
+    final relative = now - (generationStartedMs ?? 0);
     final raw = event.raw;
 
     nativeOutputTokens =
@@ -650,12 +689,12 @@ class OfflineRun {
     switch (event.type) {
       case AiEventType.token:
         streamed = true;
-        firstTokenMs ??= now;
-        lastTokenMs = now;
+        firstTokenMs ??= relative;
+        lastTokenMs = relative;
+        outputChars = (outputChars ?? 0) + event.text.length;
         break;
       case AiEventType.retrievalContext:
         // Android sends the passages as "citations" (and their ids as "context_ids").
-        // The old code looked for "passages", which never exists, so it never counted.
         final listed = raw['passages'] ?? raw['citations'] ?? raw['context_ids'];
         if (listed is List) retrievedPassageCount = listed.length;
         break;
@@ -664,6 +703,7 @@ class OfflineRun {
         stage = 'tool_execution';
         break;
       case AiEventType.toolResult:
+        if (raw['tool_error'] == true) toolFailed = true;
         stage = 'generation';
         break;
       case AiEventType.cancelled:
@@ -684,6 +724,7 @@ class OfflineRun {
     final tokens = nativeOutputTokens;
     final first = firstTokenMs;
     final last = lastTokenMs;
+    final generationStart = generationStartedMs;
 
     double? tokensPerSecond;
     // Speed of writing = (tokens after the first one) / (time between first and last token).
@@ -693,12 +734,33 @@ class OfflineRun {
 
     return {
       'output_tokens': ?tokens,
+      'output_chars': ?outputChars,
       'tool_used': toolUsed,
-      // When a tool was used the count is ALWAYS sent, including 0 for "found nothing".
-      if (toolUsed) 'retrieved_passage_count': retrievedPassageCount ?? 0,
+      // EVERY answer now carries this, including 0 when nothing was retrieved.
+      'retrieved_passage_count': retrievedPassageCount ?? 0,
       'streamed': streamed,
+      'model_load_ms': ?modelLoadMs,
+      // Time from "generation started" until the first word arrived.
       'time_to_first_token_ms': ?first,
+      // Same as above but counted from the moment the user's request began
+      // (model load included), so it can be compared with latency_ms.
+      'time_to_first_token_from_request_ms':
+          (modelLoadMs != null && first != null) ? modelLoadMs! + first : null,
+      // Time from the first word until the last word (streaming only).
+      'stream_duration_ms': (first != null && last != null && last >= first) ? last - first : null,
+      // Whole generation phase (model already loaded).
+      'generation_duration_ms':
+          generationStart == null ? null : clock.elapsedMilliseconds - generationStart,
       'tokens_per_second': ?tokensPerSecond,
+    };
+  }
+
+  /// Everything above + the device envelope measured while the answer ran.
+  Future<Map<String, Object?>> fullResponseMetadata() async {
+    final envelopeMetadata = await envelope.metadata();
+    return {
+      ...responseMetadata(),
+      ...envelopeMetadata,
     };
   }
 

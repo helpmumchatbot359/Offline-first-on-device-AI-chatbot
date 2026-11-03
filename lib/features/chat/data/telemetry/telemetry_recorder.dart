@@ -26,6 +26,7 @@ import 'package:uuid/uuid.dart';
 
 import '../local/chat_local_data_source.dart';
 import '../local/entities/local_telemetry_entity.dart';
+import 'device_telemetry.dart';
 
 // =============================================================================
 // 1) THE CONTRACT, WRITTEN AS CODE
@@ -156,6 +157,22 @@ class TelemetryContract {
           'metadata must not contain "$key" (no messages, tokens or stack traces)');
     }
 
+    // The device envelope is added to EVERY event by TelemetryRecorder.
+    // It is optional at validation time (so old queued events can still be
+    // cleaned up), but when present it must be an object.
+    if (meta['device'] != null) {
+      need(meta['device'] is Map, 'metadata.device must be an object');
+    }
+    if (meta['memory'] != null) {
+      need(meta['memory'] is Map, 'metadata.memory must be an object');
+    }
+    if (meta['thermal'] != null) {
+      need(meta['thermal'] is Map, 'metadata.thermal must be an object');
+    }
+    if (meta['battery'] != null) {
+      need(meta['battery'] is Map, 'metadata.battery must be an object');
+    }
+
     switch (e.eventType) {
       case offlineStarted:
         need(e.connectivity == 'offline', 'offline_started: connectivity must be "offline"');
@@ -185,8 +202,13 @@ class TelemetryContract {
         if (e.outcome == 'cancelled') {
           need(e.errorCode == 'CANCELLED', 'offline_inference: cancelled needs error_code CANCELLED');
         }
-        // ---- TOOL TELEMETRY ALIGNMENT (the facts must agree with each other) ----
+        // ---- TOOL / RETRIEVAL TELEMETRY ----
+        // tool_used is always required (true or false).
+        // retrieved_passage_count is required for EVERY answer now, and 0 is a
+        // real answer ("the model got no passages"), never "missing".
         need(meta['tool_used'] is bool, 'offline_inference: metadata.tool_used is required (true or false)');
+        need(meta['retrieved_passage_count'] is int && (meta['retrieved_passage_count'] as int) >= 0,
+            'offline_inference: metadata.retrieved_passage_count is required (0 is allowed)');
         if (e.errorCode == 'TOOL_ERROR' || meta['error_stage'] == 'tool_execution') {
           // A tool error means a tool call happened, so tool_used can never be false.
           need(meta['tool_used'] == true,
@@ -199,6 +221,24 @@ class TelemetryContract {
         if (meta['output_tokens'] != null) {
           need(meta['output_tokens'] is int && (meta['output_tokens'] as int) >= 0,
               'offline_inference: output_tokens must be a whole number');
+        }
+        // Timing fields: present only when we really measured them.
+        for (final key in const [
+          'model_load_ms',
+          'time_to_first_token_ms',
+          'time_to_first_token_from_request_ms',
+          'stream_duration_ms',
+          'generation_duration_ms',
+          'output_chars',
+        ]) {
+          final value = meta[key];
+          if (value != null) {
+            need(value is int && value >= 0, 'offline_inference: metadata.$key must be a whole number >= 0');
+          }
+        }
+        if (meta['tokens_per_second'] != null) {
+          need(meta['tokens_per_second'] is num && (meta['tokens_per_second'] as num) >= 0,
+              'offline_inference: tokens_per_second must be a number >= 0');
         }
         break;
 
@@ -234,10 +274,18 @@ class TelemetryContract {
 // 2) THE RECORDER: one method per event type
 // =============================================================================
 class TelemetryRecorder {
-  TelemetryRecorder(this._local);
+  TelemetryRecorder(
+    this._local, {
+    DeviceTelemetry? deviceTelemetry,
+  }) : _deviceTelemetry = deviceTelemetry ?? DeviceTelemetry();
 
   final ChatLocalDataSource _local;
+  final DeviceTelemetry _deviceTelemetry;
   static const _uuid = Uuid();
+
+  /// Read-only access for the chat repository, which samples the envelope
+  /// while an on-phone answer is running.
+  DeviceTelemetry get deviceTelemetry => _deviceTelemetry;
 
   /// sync_error is throttled so a phone that keeps failing to sync does not
   /// fill the database with hundreds of identical events.
@@ -258,6 +306,11 @@ class TelemetryRecorder {
     required Map<String, Object?> metadata,
   }) async {
     try {
+      // EVERY event gets the device envelope. Per-inference values (memory at
+      // start, peak PSS, thermal, battery) win over the live snapshot because
+      // they describe the answer, not the moment this line ran.
+      final enrichedMetadata = await _withDeviceEnvelope(metadata);
+
       final event = LocalTelemetryEvent(
         // Created ONCE here. Retries during sync re-send this same value.
         eventUuid: 'event-${_uuid.v4()}',
@@ -270,7 +323,7 @@ class TelemetryRecorder {
         errorCode: errorCode,
         connectivity: connectivity,
         // jsonEncode builds valid JSON for us. Never glue JSON text together by hand.
-        metadataJson: jsonEncode(metadata),
+        metadataJson: jsonEncode(enrichedMetadata),
         syncState: 'pending',
       );
 
@@ -282,14 +335,56 @@ class TelemetryRecorder {
       }
       await _local.saveTelemetryEvent(event);
       if (kDebugMode) {
-        // Debug builds only: lets you SEE exactly what was stored (no message text is ever in it).
+        // Debug builds only: lets you SEE exactly what was stored (no message
+        // text is ever in it). The metadata is printed in chunks because a
+        // single very long line is cut off by logcat / the terminal.
+        final metadata = event.metadataJson;
         debugPrint('TELEMETRY SAVED ${event.eventType} outcome=${event.outcome} '
-            'code=${event.errorCode} metadata=${event.metadataJson}');
+            'code=${event.errorCode} metadata_length=${metadata.length}');
+        const chunkSize = 700;
+        for (var start = 0; start < metadata.length; start += chunkSize) {
+          final end = (start + chunkSize < metadata.length) ? start + chunkSize : metadata.length;
+          final part = start ~/ chunkSize + 1;
+          debugPrint('TELEMETRY META[$part] ${metadata.substring(start, end)}');
+        }
       }
     } catch (e) {
       // Telemetry must NEVER crash the chat.
       debugPrint('TELEMETRY SAVE FAILED: $e');
     }
+  }
+
+  /// Merges the live device snapshot under the caller's metadata.
+  /// Caller values always win, so a fully measured inference envelope is kept.
+  Future<Map<String, Object?>> _withDeviceEnvelope(
+    Map<String, Object?> metadata,
+  ) async {
+    Map<String, Object?> base;
+    try {
+      base = await _deviceTelemetry.snapshot();
+    } catch (_) {
+      base = _deviceTelemetry.fallbackSnapshot();
+    }
+
+    final merged = <String, Object?>{...base};
+    for (final entry in metadata.entries) {
+      final current = merged[entry.key];
+      final incoming = entry.value;
+      if (current is Map && incoming is Map) {
+        merged[entry.key] = <String, Object?>{
+          ...current.map((k, v) => MapEntry(k.toString(), v)),
+          ...incoming.map((k, v) => MapEntry(k.toString(), v)),
+        };
+      } else {
+        merged[entry.key] = incoming;
+      }
+    }
+
+    // Absolute guarantee: every event carries the static device block.
+    if (merged['device'] is! Map) {
+      merged['device'] = await _deviceTelemetry.deviceInfo();
+    }
+    return merged;
   }
 
   // ---------------------------------------------------------------------------
@@ -374,6 +469,7 @@ class TelemetryRecorder {
     required String failureType, // crash | out_of_memory | model_load_failure | generation_failure
     required String failureStage, // app_startup | model_load | retrieval | generation | tool_execution
     String connectivity = 'unknown',
+    Map<String, Object?> extraMetadata = const {},
   }) {
     return _save(
       eventType: TelemetryContract.runtimeFailure,
@@ -385,6 +481,7 @@ class TelemetryRecorder {
       metadata: {
         'failure_type': failureType,
         'failure_stage': failureStage,
+        ...extraMetadata,
       },
     );
   }

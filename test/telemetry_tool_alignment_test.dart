@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mama_ai/features/chat/data/ai/native_offline_ai_service.dart';
 import 'package:mama_ai/features/chat/data/chat_repository_impl.dart';
 import 'package:mama_ai/features/chat/data/local/entities/local_telemetry_entity.dart';
+import 'package:mama_ai/features/chat/data/telemetry/device_telemetry.dart';
 import 'package:mama_ai/features/chat/data/telemetry/telemetry_recorder.dart';
 
 /// Plays Android's events through the SAME code the app uses to collect measurements.
@@ -114,7 +115,7 @@ void main() {
       expect(run.responseMetadata()['retrieved_passage_count'], 0);
     });
 
-    test('T5  no tool used -> tool_used false and no passage count', () {
+    test('T5  no tool used -> tool_used false but passage count is still 0 (never missing)', () {
       final run = play([
         {'event': 'started'},
         {'event': 'token', 'text': 'Hi'},
@@ -122,7 +123,8 @@ void main() {
       ]);
       final e = finishRequest(run)!;
       expect(meta(e)['tool_used'], false);
-      expect(meta(e).containsKey('retrieved_passage_count'), false);
+      expect(meta(e).containsKey('retrieved_passage_count'), true);
+      expect(meta(e)['retrieved_passage_count'], 0);
       expect(TelemetryContract.validate(e), isEmpty);
     });
   });
@@ -256,6 +258,62 @@ void main() {
           );
       expect(TelemetryContract.validate(withCount(-1)), isNotEmpty);
       expect(TelemetryContract.validate(withCount(0)), isEmpty);
+    });
+  });
+
+  group('Device envelope and per-answer measurements', () {
+    test('T14  envelope has the exact metadata shape the backend expects', () {
+      final envelope = DeviceEnvelope(
+        device: {
+          'manufacturer': 'Samsung',
+          'model': 'SM-A...',
+          'android_api': 35,
+          'ram_total_mb': 8192,
+          'ram_class': '8GB',
+          'backend': 'cpu',
+        },
+        start: {
+          'memory': {
+            'available_mb': 5340,
+            'total_mb': 8192,
+            'threshold_mb': 200,
+            'low_memory': false,
+            'process_pss_mb': 1200,
+          },
+          'thermal': {'status': 2, 'status_name': 'moderate', 'headroom': 0.4},
+          'battery': {'percent': 80, 'temperature_c': 31.5, 'charging': false},
+        },
+        end: {
+          'memory': {'available_mb': 4000, 'process_pss_mb': 1500},
+          'thermal': {'status': 3, 'status_name': 'severe', 'headroom': 0.2},
+        },
+        peakProcessPssMb: 2860,
+      );
+
+      final meta = envelope.toMetadata();
+      expect((meta['device'] as Map)['model'], 'SM-A...');
+      expect((meta['device'] as Map)['ram_class'], '8GB');
+      expect((meta['memory'] as Map)['available_mb_at_start'], 5340);
+      expect((meta['memory'] as Map)['peak_process_pss_mb'], 2860);
+      expect((meta['memory'] as Map)['available_mb_at_end'], 4000);
+      expect((meta['thermal'] as Map)['status_at_end'], 3);
+      expect((meta['battery'] as Map)['percent'], 80);
+    });
+
+    test('T15  every answer reports stream timing and a passage count', () {
+      final run = play([
+        {'event': 'started'},
+        {'event': 'token', 'text': 'Hello'},
+        {'event': 'token', 'text': ' there'},
+        {'event': 'completed', 'tool_used': false, 'retrieved_passage_count': 0},
+      ]);
+      final m = run.responseMetadata();
+      expect(m['retrieved_passage_count'], 0);
+      expect(m.containsKey('time_to_first_token_ms'), true);
+      expect(m.containsKey('stream_duration_ms'), true);
+      expect(m.containsKey('output_chars'), true);
+      expect(m['output_chars'], 11); // "Hello" + " there"
+      expect(m['tool_used'], false);
     });
   });
 }

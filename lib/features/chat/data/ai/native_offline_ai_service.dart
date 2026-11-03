@@ -134,7 +134,6 @@ class NativeOfflineAiService {
 
     void armWatchdog() {
       watchdog?.cancel();
-      // Android gives up after 240s per round; this catches a silent crash.
       watchdog = Timer(const Duration(minutes: 6), () {
         fail(const OfflineAiException('The offline assistant stopped responding.'));
       });
