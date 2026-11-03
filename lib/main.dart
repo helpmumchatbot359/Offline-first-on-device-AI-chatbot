@@ -53,6 +53,7 @@ Future<void> main() async {
   final telemetry = TelemetryRecorder(
     localDataSource,
     deviceTelemetry: deviceTelemetry,
+    diagnosticLogger: diagnosticLogger,
   );
   // If the app died in the middle of an on-phone answer last time (crash /
   // Android killed it for memory), record a runtime_failure NOW, before the
@@ -84,7 +85,11 @@ Future<void> main() async {
     telemetry: telemetry, // TELEMETRY: new
     tokenStorage: tokenStorage, // TELEMETRY: new
     modelSetupService: modelSetupService, // TELEMETRY: new
-  )..startBackgroundSync();
+  );
+  // Upload a freshly created telemetry event immediately (if online).
+  // Without this, an event could wait until the next connectivity change.
+  telemetry.onEventQueued = syncService.syncAll;
+  syncService.startBackgroundSync();
 
   runApp(MamaApp(
     tokenStorage: tokenStorage,

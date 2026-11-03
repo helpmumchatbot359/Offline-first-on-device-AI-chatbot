@@ -269,13 +269,27 @@ class ChatRepositoryImpl implements ChatRepository {
 
       // TELEMETRY: exactly ONE event for this on-phone request.
       if (offlineAttempted && (!isOnline || _recordCloudFallbackAsOffline)) {
-        await _recordOfflineTelemetry(
-          chatId: chatId,
-          isOnline: isOnline,
-          run: run,
-          cancelled: stopped || run.nativeCancelled || !reachedTheEnd,
-          failure: failure,
-        );
+        try {
+          await _recordOfflineTelemetry(
+            chatId: chatId,
+            isOnline: isOnline,
+            run: run,
+            cancelled: stopped || run.nativeCancelled || !reachedTheEnd,
+            failure: failure,
+          );
+        } catch (e) {
+          // A telemetry problem must never suppress the diagnostic log or the
+          // final answer shown to the user.
+          debugPrint('TELEMETRY RECORD FAILED: $e');
+          diagnosticLogger.logEvent(
+            logType: 'telemetry_event_failed',
+            metrics: {
+              'event_type': 'offline_inference',
+              'chat_id': chatId,
+              'error': e.toString().length > 500 ? e.toString().substring(0, 500) : e.toString(),
+            },
+          );
+        }
       }
     }
 
@@ -297,7 +311,16 @@ class ChatRepositoryImpl implements ChatRepository {
       metrics: {
         'latency_ms': overall.elapsedMilliseconds,
         'success': success,
+        // The same RAG facts that go into telemetry. Diagnostics is the
+        // channel that currently always reaches the backend, so keeping these
+        // here means an offline answer is still analysable even if
+        // /v1/telemetry rejects or delays the event.
+        'tool_used': run.toolUsed,
+        'retrieved_passage_count': run.retrievedPassageCount ?? 0,
+        'streamed': run.streamed,
         if (run.modelLoadMs != null) 'model_load_ms': run.modelLoadMs,
+        if (run.nativeOutputTokens != null) 'output_tokens': run.nativeOutputTokens,
+        if (run.firstTokenMs != null) 'time_to_first_token_ms': run.firstTokenMs,
         ...runtimeDiagnostics,
       },
     );
@@ -324,7 +347,15 @@ class ChatRepositoryImpl implements ChatRepository {
   }) async {
     final latencyMs = run.clock.elapsedMilliseconds; // on-phone time only
     // Stops the sampler, then returns measurements + device envelope.
-    final responseMetadata = await run.fullResponseMetadata();
+    // If the envelope itself ever fails, still send the core measurements:
+    // losing a device block is much better than losing the whole event.
+    Map<String, Object?> responseMetadata;
+    try {
+      responseMetadata = await run.fullResponseMetadata();
+    } catch (e) {
+      debugPrint('TELEMETRY ENVELOPE BUILD FAILED: $e');
+      responseMetadata = run.responseMetadata();
+    }
 
     // A tool FAILED while it was running, even though the model still wrote an
     // answer. The contract still wants: outcome "error", TOOL_ERROR, tool_execution

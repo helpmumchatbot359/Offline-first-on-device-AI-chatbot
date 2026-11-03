@@ -33,6 +33,19 @@ class SyncService {
   StreamSubscription<List<ConnectivityResult>>? _subscription;
   bool _isSyncing = false;
 
+  /// Heartbeat that retries the queue on its own.
+  ///
+  /// WHY: syncAll() used to run ONLY at app start and when the OS announced a
+  /// connectivity CHANGE. If that one trigger was missed - the app was in the
+  /// background, or checkConnectivity() still said "none" a second after Wi-Fi
+  /// returned - the queued offline_inference events waited until the next app
+  /// launch. On a phone that is never restarted, that means "telemetry never
+  /// syncs". This timer makes the upload independent of connectivity events.
+  Timer? _heartbeat;
+
+  /// Every 60 s is cheap: syncAll() does nothing when the queues are empty.
+  static const _heartbeatInterval = Duration(seconds: 60);
+
   /// Send telemetry in small batches so one upload is never huge,
   /// and an interrupted upload only has to repeat a small piece.
   static const _telemetryBatchSize = 50;
@@ -48,6 +61,7 @@ class SyncService {
   // ---------------------------------------------------------------------------
   void startBackgroundSync() {
     unawaited(_start());
+    _heartbeat ??= Timer.periodic(_heartbeatInterval, (_) => unawaited(syncAll()));
   }
 
   Future<void> _start() async {
@@ -146,9 +160,12 @@ class SyncService {
     _isSyncing = true;
     final stopwatch = Stopwatch()..start();
     try {
-      final chatsOk = await _syncPendingChats();
-      final telemetryOk = await _syncPendingTelemetry();
-      final diagnosticsOk = await _syncPendingDiagnostics();
+      // Each pipeline is isolated. Before, an exception inside the telemetry
+      // step stopped the diagnostic step too, even though the comment above
+      // promised they run on their own.
+      final chatsOk = await _guardedSync('chat', _syncPendingChats);
+      final telemetryOk = await _guardedSync('telemetry', _syncPendingTelemetry);
+      final diagnosticsOk = await _guardedSync('diagnostic', _syncPendingDiagnostics);
       stopwatch.stop();
       _diagnosticLogger.logEvent(
         logType: 'synchronization_measurement',
@@ -157,8 +174,42 @@ class SyncService {
           'acknowledgement_time_ms': stopwatch.elapsedMilliseconds,
         },
       );
+      // PROOF OF STATE: these two numbers are written to the diagnostics table
+      // (which uploads successfully), so you can see from the backend exactly
+      // what the phone still holds. pending > 0 means the event exists locally
+      // but has not been acknowledged yet.
+      final pending = await _localDataSource.countPendingTelemetry();
+      final rejected = await _localDataSource.countTelemetryByState('rejected');
+      _diagnosticLogger.logEvent(
+        logType: 'telemetry_queue_state',
+        metrics: {
+          'pending_events': pending,
+          'rejected_events': rejected,
+          'telemetry_sync_ok': telemetryOk,
+        },
+      );
     } finally {
       _isSyncing = false;
+    }
+  }
+
+  /// Runs one sync pipeline. A crash in one must never stop the others.
+  Future<bool> _guardedSync(
+    String name,
+    Future<bool> Function() work,
+  ) async {
+    try {
+      return await work();
+    } catch (e) {
+      debugPrint('SYNC PIPELINE "$name" FAILED: ${_describe(e)}');
+      _diagnosticLogger.logEvent(
+        logType: 'sync_pipeline_failed',
+        metrics: {
+          'sync_target': name,
+          'error_message': _short(_describe(e)),
+        },
+      );
+      return false;
     }
   }
 
@@ -224,68 +275,201 @@ class SyncService {
       if (batch.isEmpty) return true;
 
       final clock = Stopwatch()..start();
-      try {
-        final payload = batch.map(_toPayload).toList();
-        final response = await _apiClient.dio.post('/v1/telemetry', data: payload);
+      final result = await _postTelemetry(batch);
+      clock.stop();
 
-        final acknowledged = <String>{};
-        final data = response.data;
-        if (data is Map && data['acknowledged_event_uuids'] is List) {
-          for (final u in data['acknowledged_event_uuids'] as List) {
-            acknowledged.add(u.toString());
-          }
-        }
-
-        // Only trust UUIDs that we really sent in THIS batch.
-        final sent = batch.map((e) => e.eventUuid).toSet();
-        final confirmed = acknowledged.intersection(sent).toList();
-        await _localDataSource.markTelemetryAcknowledged(confirmed);
-
-        if (confirmed.length < batch.length) {
-          // The server did not confirm everything. Do NOT pretend it did
-          // (the old code marked everything as done on any 200 reply).
-          clock.stop();
-          await _recordSyncError(
-            target: 'telemetry',
-            code: 'SERVER_ERROR',
-            status: response.statusCode,
-            latencyMs: clock.elapsedMilliseconds,
-          );
-          return false;
-        }
-      } catch (e) {
-        clock.stop();
-        final failure = classifySyncError(e);
-        await _recordSyncError(
-          target: 'telemetry',
-          code: failure.code,
-          status: failure.status,
-          latencyMs: clock.elapsedMilliseconds,
-        );
-        _diagnosticLogger.logEvent(logType: 'runtime_failure_detail', metrics: {
-          'failure_type': 'sync_error',
-          'error_message': _describe(e),
-          'duration_ms': clock.elapsedMilliseconds,
-        });
-        return false; // events stay pending, retried next time
+      if (result.acknowledged.isNotEmpty) {
+        await _localDataSource.markTelemetryAcknowledged(result.acknowledged.toList());
       }
+
+      if (result.ok) {
+        // PROOF OF DELIVERY: the server said 200 AND named every UUID it
+        // stored. Seeing this record in the diagnostics table means the
+        // telemetry row really reached the backend for this event_uuid.
+        _diagnosticLogger.logEvent(
+          logType: 'telemetry_upload_acknowledged',
+          metrics: {
+            'batch_size': batch.length,
+            'event_types': batch.map((e) => e.eventType).toSet().toList(),
+            'first_event_uuid': batch.first.eventUuid,
+            'first_chat_id': batch.first.chatId,
+          },
+        );
+        continue;
+      }
+
+      // A "permanent" answer (HTTP 400/413/422) usually means ONE event has a
+      // field the server refuses. Before, that one event blocked the whole
+      // batch and every good inference event behind it. Retry one-by-one.
+      if (result.permanent) {
+        final rejected = <int>[];
+        for (final event in batch) {
+          if (result.acknowledged.contains(event.eventUuid)) continue;
+
+          final single = await _postTelemetry([event]);
+          if (single.acknowledged.isNotEmpty) {
+            await _localDataSource.markTelemetryAcknowledged(single.acknowledged.toList());
+            continue;
+          }
+          if (!single.permanent) {
+            // The isolating retry hit a network/server problem. Keep everything
+            // pending and try again on the next sync.
+            await _recordSyncError(
+              target: 'telemetry',
+              code: single.code,
+              status: single.status,
+              latencyMs: clock.elapsedMilliseconds,
+            );
+            return false;
+          }
+
+          rejected.add(event.id);
+          _diagnosticLogger.logEvent(
+            logType: 'telemetry_event_rejected_by_server',
+            metrics: {
+              'event_uuid': event.eventUuid,
+              'event_type': event.eventType,
+              'chat_id': event.chatId,
+              'http_status': single.status,
+              'server_response': _short(single.body),
+              // The exact JSON we sent for THIS event, so the reason is
+              // reproducible without another phone test.
+              'payload_sent': _short(jsonEncode(_toPayload(event)), 1200),
+            },
+          );
+        }
+
+        // Quarantine the refused events so they stop blocking good ones.
+        if (rejected.isNotEmpty) {
+          await _localDataSource.markTelemetryRejected(rejected);
+        }
+        continue;
+      }
+
+      // 2xx without every acknowledgement, or a network/server problem.
+      // Keep the events pending and stop this sync run.
+      await _recordSyncError(
+        target: 'telemetry',
+        code: result.code,
+        status: result.status,
+        latencyMs: clock.elapsedMilliseconds,
+      );
+      _diagnosticLogger.logEvent(
+        logType: 'telemetry_upload_not_acknowledged',
+        metrics: {
+          'batch_size': batch.length,
+          'acknowledged_count': result.acknowledged.length,
+          'http_status': result.status,
+          'server_response': _short(result.body),
+        },
+      );
+      return false;
     }
     return true;
   }
 
+  /// Sends one telemetry batch and reports exactly what happened.
+  ///
+  /// [permanent] means the server refused the payload itself (4xx). In that
+  /// case the caller retries each event alone, so one bad event cannot hide
+  /// the good ones.
+  Future<({
+    bool ok,
+    bool permanent,
+    Set<String> acknowledged,
+    int? status,
+    Object? body,
+    String code,
+  })> _postTelemetry(List<LocalTelemetryEvent> batch) async {
+    try {
+      final response = await _apiClient.dio.post(
+        '/v1/telemetry',
+        data: batch.map(_toPayload).toList(),
+      );
+
+      final acknowledged = <String>{};
+      final data = response.data;
+      if (data is Map && data['acknowledged_event_uuids'] is List) {
+        for (final uuid in data['acknowledged_event_uuids'] as List) {
+          acknowledged.add(uuid.toString());
+        }
+      }
+
+      // Only trust UUIDs that we really sent in THIS batch.
+      final sent = batch.map((e) => e.eventUuid).toSet();
+      final confirmed = acknowledged.intersection(sent);
+      final ok = _ok(response) && confirmed.length == batch.length;
+
+      return (
+        ok: ok,
+        permanent: false,
+        acknowledged: confirmed,
+        status: response.statusCode,
+        body: data,
+        code: 'SERVER_ERROR',
+      );
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      final permanent = status == 400 || status == 413 || status == 422;
+      return (
+        ok: false,
+        permanent: permanent,
+        acknowledged: <String>{},
+        status: status,
+        body: e.response?.data ?? e.message,
+        code: classifySyncError(e).code,
+      );
+    } catch (e) {
+      return (
+        ok: false,
+        permanent: false,
+        acknowledged: <String>{},
+        status: null,
+        body: e.toString(),
+        code: 'INVALID_PAYLOAD',
+      );
+    }
+  }
+
   /// Exactly the JSON shape of the contract (section 4).
-  Map<String, dynamic> _toPayload(LocalTelemetryEvent e) => {
-        'event_uuid': e.eventUuid,
-        'event_type': e.eventType,
-        'chat_id': e.chatId,
-        'date': e.date,
-        'model_version': e.modelVersion,
-        'latency_ms': e.latencyMs,
-        'outcome': e.outcome,
-        'error_code': e.errorCode,
-        'connectivity': e.connectivity,
-        'metadata': jsonDecode(e.metadataJson),
-      };
+  ///
+  /// IMPORTANT: optional fields are LEFT OUT when they have no value. Sending
+  /// `"latency_ms": null` or `"error_code": null` looks harmless, but strict
+  /// servers can reject the whole batch for it. The contract example for
+  /// offline_started does not contain those keys at all.
+  Map<String, dynamic> _toPayload(LocalTelemetryEvent e) => buildTelemetryPayload(e);
+
+  /// Visible for tests: proves that optional null fields are never sent.
+  @visibleForTesting
+  static Map<String, dynamic> buildTelemetryPayload(LocalTelemetryEvent e) {
+    final payload = <String, dynamic>{
+      'event_uuid': e.eventUuid,
+      'event_type': e.eventType,
+      'date': e.date,
+      'connectivity': e.connectivity,
+      'metadata': _cleanMetadata(e.metadataJson),
+    };
+    if (e.chatId != null && e.chatId!.isNotEmpty) payload['chat_id'] = e.chatId;
+    if (e.modelVersion != null) payload['model_version'] = e.modelVersion;
+    if (e.latencyMs != null) payload['latency_ms'] = e.latencyMs;
+    if (e.outcome != null) payload['outcome'] = e.outcome;
+    if (e.errorCode != null) payload['error_code'] = e.errorCode;
+    return payload;
+  }
+
+  /// Also protects events queued by an older build, which may still contain
+  /// null metadata values.
+  static Map<String, Object?> _cleanMetadata(String metadataJson) {
+    try {
+      final decoded = jsonDecode(metadataJson);
+      if (decoded is! Map) return <String, Object?>{};
+      return TelemetryRecorder.withoutNulls(
+        decoded.map((key, value) => MapEntry(key.toString(), value)),
+      );
+    } catch (_) {
+      return <String, Object?>{};
+    }
+  }
 
   /// SAFETY NET. Old events saved by the previous version of the app
   /// (event_type 'online_inference', error_code 'offline_mode', ...) can never
@@ -300,12 +484,21 @@ class SyncService {
       if (problems.isNotEmpty) {
         badIds.add(e.id);
         debugPrint('TELEMETRY DROPPED (${e.eventType}): $problems');
+        _diagnosticLogger.logEvent(
+          logType: 'telemetry_dropped_invalid',
+          metrics: {
+            'event_uuid': e.eventUuid,
+            'event_type': e.eventType,
+            'chat_id': e.chatId,
+            'problems': problems,
+          },
+        );
       }
     }
     if (badIds.isEmpty) return;
     await _localDataSource.removeTelemetry(badIds);
     _diagnosticLogger.logEvent(
-      logType: 'telemetry_dropped_invalid',
+      logType: 'telemetry_dropped_invalid_total',
       metrics: {'count': badIds.length},
     );
   }
@@ -387,7 +580,17 @@ class SyncService {
     return e.toString();
   }
 
+  /// Keeps a diagnostic record small even when the server returns a long error.
+  static String _short(Object? value, [int max = 500]) {
+    final text = value?.toString() ?? '';
+    return text.length <= max ? text : '${text.substring(0, max)}...';
+  }
+
   static bool _ok(Response r) => (r.statusCode ?? 0) >= 200 && (r.statusCode ?? 0) < 300;
 
-  void stop() => _subscription?.cancel();
+  void stop() {
+    _heartbeat?.cancel();
+    _heartbeat = null;
+    _subscription?.cancel();
+  }
 }

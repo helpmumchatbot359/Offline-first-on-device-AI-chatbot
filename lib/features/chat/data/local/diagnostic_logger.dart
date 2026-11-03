@@ -19,7 +19,7 @@ class DiagnosticLogger {
   String _currentNetworkState = 'stable_connectivity';
 
   /// Highest process PSS this logger has seen. For records with no sampler
-  /// (cycle logs, sync logs), this is a real observed peak instead of a guess.
+
   int? _peakProcessPssMb;
 
   String get currentOfflineCycleId => _currentOfflineCycleId ??= 'cycle-${const Uuid().v4()}';

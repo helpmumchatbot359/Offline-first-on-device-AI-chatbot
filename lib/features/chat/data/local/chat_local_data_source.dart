@@ -195,12 +195,17 @@ class ChatLocalDataSource {
   }
 
   // --- Telemetry Storage ---------------------------------------------------
-  // Append-only: new events are only ever ADDED. The only changes later are
-  //   * syncState -> 'acknowledged' (after the backend confirms the event_uuid)
-  //   * removal of events that break the contract (see SyncService)
 
   Future<void> saveTelemetryEvent(LocalTelemetryEvent event) async {
     _telemetryBox.put(event);
+  }
+
+  /// Persists events that were repaired (not newly created). Used by the sync
+  /// service to add the device envelope / RAG defaults to rows written by an
+  /// older build before uploading them.
+  Future<void> saveTelemetryEvents(List<LocalTelemetryEvent> events) async {
+    if (events.isEmpty) return;
+    _telemetryBox.putMany(events);
   }
 
   /// Oldest pending events first. Pass [limit] to send in small batches.
@@ -216,6 +221,15 @@ class ChatLocalDataSource {
 
   Future<int> countPendingTelemetry() async {
     final query = _telemetryBox.query(LocalTelemetryEvent_.syncState.equals('pending')).build();
+    final n = query.count();
+    query.close();
+    return n;
+  }
+
+  /// How many events are in a given state ('pending', 'acknowledged',
+  /// 'rejected'). Used by the diagnostics audit to show the real queue state.
+  Future<int> countTelemetryByState(String syncState) async {
+    final query = _telemetryBox.query(LocalTelemetryEvent_.syncState.equals(syncState)).build();
     final n = query.count();
     query.close();
     return n;
@@ -240,5 +254,18 @@ class ChatLocalDataSource {
   Future<void> removeTelemetry(List<int> localIds) async {
     if (localIds.isEmpty) return;
     _telemetryBox.removeMany(localIds);
+  }
+
+  /// Quarantines events the server permanently refused (HTTP 400/413/422).
+  /// They stop blocking the good events behind them, but stay on the phone for
+  /// debugging. A diagnostic record explains why each one was rejected.
+  Future<void> markTelemetryRejected(List<int> localIds) async {
+    if (localIds.isEmpty) return;
+    final events = _telemetryBox.getMany(localIds);
+    for (final event in events) {
+      if (event == null) continue;
+      event.syncState = 'rejected';
+    }
+    _telemetryBox.putMany(events.whereType<LocalTelemetryEvent>().toList());
   }
 }

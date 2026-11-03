@@ -16,6 +16,7 @@
 // Rule: if an event does not follow the contract, it is NOT stored
 // (a stored bad event would block every good event behind it, see notes).
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -25,6 +26,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../local/chat_local_data_source.dart';
+import '../local/diagnostic_logger.dart';
 import '../local/entities/local_telemetry_entity.dart';
 import 'device_telemetry.dart';
 
@@ -277,11 +279,21 @@ class TelemetryRecorder {
   TelemetryRecorder(
     this._local, {
     DeviceTelemetry? deviceTelemetry,
-  }) : _deviceTelemetry = deviceTelemetry ?? DeviceTelemetry();
+    DiagnosticLogger? diagnosticLogger,
+  })  : _deviceTelemetry = deviceTelemetry ?? DeviceTelemetry(),
+        // ignore: prefer_initializing_formals
+        _diagnosticLogger = diagnosticLogger;
 
   final ChatLocalDataSource _local;
   final DeviceTelemetry _deviceTelemetry;
+  final DiagnosticLogger? _diagnosticLogger;
   static const _uuid = Uuid();
+
+  /// Called right after an event is safely stored on the phone.
+  /// main.dart points this at SyncService.syncAll(), so a freshly created
+  /// offline_inference is uploaded immediately instead of waiting for the next
+  /// scheduled sync. If there is no network, syncAll() does nothing.
+  void Function()? onEventQueued;
 
   /// Read-only access for the chat repository, which samples the envelope
   /// while an on-phone answer is running.
@@ -309,7 +321,20 @@ class TelemetryRecorder {
       // EVERY event gets the device envelope. Per-inference values (memory at
       // start, peak PSS, thermal, battery) win over the live snapshot because
       // they describe the answer, not the moment this line ran.
-      final enrichedMetadata = await _withDeviceEnvelope(metadata);
+      Map<String, Object?> enrichedMetadata;
+      try {
+        enrichedMetadata = await _withDeviceEnvelope(metadata);
+      } catch (e) {
+        // A broken native snapshot must NOT throw the event away. Send the
+        // event without the envelope instead; the server still gets the row.
+        debugPrint('TELEMETRY ENVELOPE FAILED: $e');
+        enrichedMetadata = {...metadata};
+      }
+
+      // Remove every null/nested-null field. Example: a successful answer used
+      // to send "error_stage": null. A strict backend can reject the WHOLE
+      // batch for that one field, which made good inference events disappear.
+      enrichedMetadata = withoutNulls(enrichedMetadata);
 
       final event = LocalTelemetryEvent(
         // Created ONCE here. Retries during sync re-send this same value.
@@ -331,9 +356,33 @@ class TelemetryRecorder {
       if (problems.isNotEmpty) {
         // Storing it would make the backend reject the whole upload.
         debugPrint('TELEMETRY NOT SAVED (breaks the contract): $problems');
+        unawaited(_logDiagnostic('telemetry_event_rejected', {
+          'event_uuid': event.eventUuid,
+          'event_type': event.eventType,
+          'chat_id': event.chatId,
+          'problems': problems,
+        }));
         return;
       }
       await _local.saveTelemetryEvent(event);
+
+      // Try to upload it right away (the sync service ignores this when the
+      // phone has no network). Never let this call break the chat.
+      try {
+        onEventQueued?.call();
+      } catch (_) {}
+
+      // AUDIT TRAIL. This proves on the phone that the event really reached
+      // the local queue, before any network request happens.
+      unawaited(_logDiagnostic('telemetry_event_saved', {
+        'event_uuid': event.eventUuid,
+        'event_type': event.eventType,
+        'chat_id': event.chatId,
+        'outcome': event.outcome,
+        'latency_ms': event.latencyMs,
+        'metadata_bytes': event.metadataJson.length,
+      }));
+
       if (kDebugMode) {
         // Debug builds only: lets you SEE exactly what was stored (no message
         // text is ever in it). The metadata is printed in chunks because a
@@ -351,20 +400,81 @@ class TelemetryRecorder {
     } catch (e) {
       // Telemetry must NEVER crash the chat.
       debugPrint('TELEMETRY SAVE FAILED: $e');
+      unawaited(_logDiagnostic('telemetry_event_failed', {
+        'event_type': eventType,
+        'chat_id': chatId,
+        'error': e.toString().length > 500 ? e.toString().substring(0, 500) : e.toString(),
+      }));
     }
   }
 
+  /// Drops null values at every level. A missing optional field is safe; a
+  /// present field with value null is what strict JSON schemas often refuse.
+  static Map<String, Object?> withoutNulls(Map<String, Object?> value) {
+    final cleaned = <String, Object?>{};
+    for (final entry in value.entries) {
+      final item = _withoutNullsValue(entry.value);
+      if (item != null) cleaned[entry.key] = item;
+    }
+    return cleaned;
+  }
+
+  static Object? _withoutNullsValue(Object? value) {
+    if (value == null) return null;
+    if (value is Map) {
+      final cleaned = <String, Object?>{};
+      for (final entry in value.entries) {
+        final item = _withoutNullsValue(entry.value);
+        if (item != null) cleaned[entry.key.toString()] = item;
+      }
+      return cleaned;
+    }
+    if (value is List) {
+      return value.map(_withoutNullsValue).where((item) => item != null).toList();
+    }
+    return value;
+  }
+
+  Future<void> _logDiagnostic(String logType, Map<String, dynamic> metrics) async {
+    final logger = _diagnosticLogger;
+    if (logger == null) return;
+    await logger.logEvent(logType: logType, metrics: metrics);
+  }
+
+  /// Public wrapper used by the sync service to repair events queued by an
+  /// older build that did not have the device envelope yet.
+  Future<Map<String, Object?>> envelopeMetadata([
+    Map<String, Object?> metadata = const {},
+  ]) =>
+      _withDeviceEnvelope(metadata);
+
   /// Merges the live device snapshot under the caller's metadata.
   /// Caller values always win, so a fully measured inference envelope is kept.
+  ///
+  /// The snapshot is converted through [DeviceEnvelope] first. That guarantees
+  /// EVERY event (not only inferences) uses the same metadata shape:
+  ///   device  : manufacturer, model, android_api, ram_total_mb, ram_class, backend
+  ///   memory  : available_mb_at_start, process_pss_mb_at_start, peak_process_pss_mb
+  ///   thermal : status_at_start, status_name_at_start, headroom_at_start
+  ///   battery : percent, temperature_c, charging
   Future<Map<String, Object?>> _withDeviceEnvelope(
     Map<String, Object?> metadata,
   ) async {
-    Map<String, Object?> base;
+    Map<String, Object?> snapshot;
     try {
-      base = await _deviceTelemetry.snapshot();
+      snapshot = await _deviceTelemetry.snapshot();
     } catch (_) {
-      base = _deviceTelemetry.fallbackSnapshot();
+      snapshot = _deviceTelemetry.fallbackSnapshot();
     }
+
+    final device = _asMap(snapshot['device']);
+    final memory = _asMap(snapshot['memory']);
+    final currentPss = _asInt(memory['process_pss_mb']);
+    final base = DeviceEnvelope(
+      device: device.isEmpty ? await _deviceTelemetry.deviceInfo() : device,
+      start: snapshot,
+      peakProcessPssMb: currentPss,
+    ).toMetadata();
 
     final merged = <String, Object?>{...base};
     for (final entry in metadata.entries) {
@@ -385,6 +495,20 @@ class TelemetryRecorder {
       merged['device'] = await _deviceTelemetry.deviceInfo();
     }
     return merged;
+  }
+
+  static Map<String, Object?> _asMap(Object? value) {
+    if (value is Map) {
+      return value.map((key, item) => MapEntry(key.toString(), item));
+    }
+    return <String, Object?>{};
+  }
+
+  static int? _asInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
   }
 
   // ---------------------------------------------------------------------------
@@ -420,6 +544,24 @@ class TelemetryRecorder {
     String? errorStage, // null when success
     Map<String, Object?> responseMetadata = const {},
   }) {
+    // RAG analysis needs these two facts on EVERY inference event. The native
+    // layer already reports them (tool_used / passages.size()), but we add
+    // honest defaults here as a last line of defence so an event can never be
+    // dropped (or arrive without the fields) because one caller forgot them.
+    final metadata = <String, Object?>{
+      // Only send error_stage when there is a real error. On success the
+      // field is left out completely (not sent as null).
+      'error_stage': ?errorStage,
+      ...responseMetadata, // output_tokens, tool_used, streamed, ...
+    };
+    if (metadata['tool_used'] is! bool) {
+      metadata['tool_used'] = false;
+    }
+    final passages = metadata['retrieved_passage_count'];
+    if (passages is! int || passages < 0) {
+      metadata['retrieved_passage_count'] = 0;
+    }
+
     return _save(
       eventType: TelemetryContract.offlineInference,
       chatId: chatId,
@@ -428,10 +570,7 @@ class TelemetryRecorder {
       outcome: outcome,
       errorCode: errorCode,
       connectivity: 'offline', // fixed by the contract
-      metadata: {
-        'error_stage': errorStage,
-        ...responseMetadata, // output_tokens, tool_used, streamed, ...
-      },
+      metadata: metadata,
     );
   }
 
