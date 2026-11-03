@@ -539,20 +539,14 @@ class TelemetryRecorder {
     required String chatId,
     required String modelVersion,
     required int latencyMs,
-    required String outcome, // success | error | cancelled
-    String? errorCode, // null when success
-    String? errorStage, // null when success
+    required String outcome,
+    String? errorCode,
+    String? errorStage,
     Map<String, Object?> responseMetadata = const {},
   }) {
-    // RAG analysis needs these two facts on EVERY inference event. The native
-    // layer already reports them (tool_used / passages.size()), but we add
-    // honest defaults here as a last line of defence so an event can never be
-    // dropped (or arrive without the fields) because one caller forgot them.
     final metadata = <String, Object?>{
-      // Only send error_stage when there is a real error. On success the
-      // field is left out completely (not sent as null).
-      'error_stage': ?errorStage,
-      ...responseMetadata, // output_tokens, tool_used, streamed, ...
+      if (errorStage != null) 'error_stage': errorStage,
+      ...responseMetadata,
     };
     if (metadata['tool_used'] is! bool) {
       metadata['tool_used'] = false;
@@ -569,7 +563,7 @@ class TelemetryRecorder {
       latencyMs: latencyMs,
       outcome: outcome,
       errorCode: errorCode,
-      connectivity: 'offline', // fixed by the contract
+      connectivity: 'offline',
       metadata: metadata,
     );
   }

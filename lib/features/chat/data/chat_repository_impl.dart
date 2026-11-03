@@ -758,31 +758,25 @@ class OfflineRun {
     final generationStart = generationStartedMs;
 
     double? tokensPerSecond;
-    // Speed of writing = (tokens after the first one) / (time between first and last token).
     if (tokens != null && tokens > 1 && first != null && last != null && last > first) {
       tokensPerSecond = double.parse(((tokens - 1) / ((last - first) / 1000)).toStringAsFixed(1));
     }
 
     return {
-      'output_tokens': ?tokens,
-      'output_chars': ?outputChars,
+      if (tokens != null) 'output_tokens': tokens,
+      if (outputChars != null) 'output_chars': outputChars,
       'tool_used': toolUsed,
-      // EVERY answer now carries this, including 0 when nothing was retrieved.
       'retrieved_passage_count': retrievedPassageCount ?? 0,
       'streamed': streamed,
-      'model_load_ms': ?modelLoadMs,
-      // Time from "generation started" until the first word arrived.
-      'time_to_first_token_ms': ?first,
-      // Same as above but counted from the moment the user's request began
-      // (model load included), so it can be compared with latency_ms.
-      'time_to_first_token_from_request_ms':
-          (modelLoadMs != null && first != null) ? modelLoadMs! + first : null,
-      // Time from the first word until the last word (streaming only).
-      'stream_duration_ms': (first != null && last != null && last >= first) ? last - first : null,
-      // Whole generation phase (model already loaded).
-      'generation_duration_ms':
-          generationStart == null ? null : clock.elapsedMilliseconds - generationStart,
-      'tokens_per_second': ?tokensPerSecond,
+      if (modelLoadMs != null) 'model_load_ms': modelLoadMs,
+      if (first != null) 'time_to_first_token_ms': first,
+      if (modelLoadMs != null && first != null)
+        'time_to_first_token_from_request_ms': modelLoadMs! + first,
+      if (first != null && last != null && last >= first)
+        'stream_duration_ms': last - first,
+      if (generationStart != null)
+        'generation_duration_ms': clock.elapsedMilliseconds - generationStart,
+      if (tokensPerSecond != null) 'tokens_per_second': tokensPerSecond,
     };
   }
 
