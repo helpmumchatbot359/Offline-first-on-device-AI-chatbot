@@ -14,7 +14,7 @@ class SavedLogin {
 class TokenStorage {
   // Optional injection of secure storage for testing; defaults to hardware encryption.
   TokenStorage([FlutterSecureStorage? storage])
-      : _s = storage ?? const FlutterSecureStorage();
+    : _s = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _s;
 
@@ -22,12 +22,14 @@ class TokenStorage {
   static const _emailKey = 'saved_email'; // used for the silent re-login
   static const _passwordKey = 'saved_password'; // used for the silent re-login
   static const _themeKey = 'theme_mode'; // 'dark' or 'light'
-  static const _userIdKey = 'local_user_id'; // stable id for this phone's offline data
+  static const _userIdKey =
+      'local_user_id'; // stable id for this phone's offline data
   static const _chatIdKey = 'active_chat_id'; // the conversation currently open
 
   // ---- Access token (the 8-hour JWT) ----
   Future<String?> readToken() => _s.read(key: _tokenKey);
-  Future<void> saveToken(String token) => _s.write(key: _tokenKey, value: token);
+  Future<void> saveToken(String token) =>
+      _s.write(key: _tokenKey, value: token);
   Future<void> clearToken() => _s.delete(key: _tokenKey);
 
   // ---- Saved login (for silent re-login) ----
@@ -42,7 +44,10 @@ class TokenStorage {
   Future<SavedLogin?> readCredentials() async {
     final email = await _s.read(key: _emailKey);
     final password = await _s.read(key: _passwordKey);
-    if (email == null || email.isEmpty || password == null || password.isEmpty) {
+    if (email == null ||
+        email.isEmpty ||
+        password == null ||
+        password.isEmpty) {
       return null;
     }
     return SavedLogin(email: email, password: password);
@@ -74,6 +79,10 @@ class TokenStorage {
     await _s.write(key: _chatIdKey, value: id);
     return id;
   }
+
+  /// Re-opens a conversation from the history list.
+  Future<void> setActiveChat(String chatId) =>
+      _s.write(key: _chatIdKey, value: chatId);
 
   /// Forget the open chat (used on sign out so the next person starts fresh).
   Future<void> resetChatSession() => _s.delete(key: _chatIdKey);

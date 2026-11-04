@@ -1,6 +1,6 @@
-
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+
 import 'entities/local_chat_entity.dart';
 import 'entities/local_telemetry_entity.dart';
 import '../../../../objectbox.g.dart';
@@ -34,11 +34,7 @@ class ChatLocalDataSource {
     chatQuery.close();
 
     if (chat == null) {
-      chat = LocalChat(
-        chatId: chatId,
-        createdAt: date,
-        updatedAt: date,
-      );
+      chat = LocalChat(chatId: chatId, createdAt: date, updatedAt: date);
       _chatBox.put(chat);
     } else {
       chat.updatedAt = date;
@@ -68,7 +64,8 @@ class ChatLocalDataSource {
   //   interruptTurn() / recoverInterruptedTurns() -> the app closed in the middle
 
   static const String stateInProgress = 'inprogress';
-  static const String stateInterrupted = 'interrupted'; // nothing to keep or upload
+  static const String stateInterrupted =
+      'interrupted'; // nothing to keep or upload
 
   static const String interruptedNote =
       'This answer was interrupted before it finished. Please ask again.';
@@ -107,7 +104,11 @@ class ChatLocalDataSource {
   }
 
   /// Saves the words written so far. Row stays 'inprogress'.
-  Future<void> updateTurn(int rowId, {required String aiResponse, required String source}) async {
+  Future<void> updateTurn(
+    int rowId, {
+    required String aiResponse,
+    required String source,
+  }) async {
     final row = _messageBox.get(rowId);
     if (row == null) return;
     row.aiResponse = aiResponse;
@@ -116,7 +117,11 @@ class ChatLocalDataSource {
   }
 
   /// The answer is complete: from now on it is a normal message waiting to upload.
-  Future<void> finishTurn(int rowId, {required String aiResponse, required String source}) async {
+  Future<void> finishTurn(
+    int rowId, {
+    required String aiResponse,
+    required String source,
+  }) async {
     final row = _messageBox.get(rowId);
     if (row == null) return;
     row.aiResponse = aiResponse;
@@ -127,7 +132,11 @@ class ChatLocalDataSource {
 
   /// The app/screen closed in the middle. Keep the partial answer if there is
   /// one, otherwise leave the question with a short "interrupted" note.
-  Future<void> interruptTurn(int rowId, {required String partial, required String source}) async {
+  Future<void> interruptTurn(
+    int rowId, {
+    required String partial,
+    required String source,
+  }) async {
     final row = _messageBox.get(rowId);
     if (row == null) return;
     if (partial.trim().isNotEmpty) {
@@ -149,7 +158,9 @@ class ChatLocalDataSource {
   /// Call ONCE when the app process starts. Any row still 'inprogress' belongs to
   /// an answer that was cut off when Android closed the app.
   Future<void> recoverInterruptedTurns() async {
-    final query = _messageBox.query(LocalChatMessage_.syncState.equals(stateInProgress)).build();
+    final query = _messageBox
+        .query(LocalChatMessage_.syncState.equals(stateInProgress))
+        .build();
     final rows = query.find();
     query.close();
     for (final row in rows) {
@@ -164,14 +175,72 @@ class ChatLocalDataSource {
   }
 
   Future<List<LocalChatMessage>> getMessages(String chatId) async {
-    final query = _messageBox.query(LocalChatMessage_.chatId.equals(chatId)).order(LocalChatMessage_.id).build();
+    final query = _messageBox
+        .query(LocalChatMessage_.chatId.equals(chatId))
+        .order(LocalChatMessage_.id)
+        .build();
     final results = query.find();
     query.close();
     return results;
   }
 
+  // --- Chat history (the list behind the drawer) ---------------------------
+
+  /// All saved conversations, newest activity first.
+  Future<List<LocalChat>> getChats() async {
+    final query = _chatBox
+        .query()
+        .order(LocalChat_.updatedAt, flags: Order.descending)
+        .build();
+    final results = query.find();
+    query.close();
+    return results;
+  }
+
+  /// The first question of a chat. Used as its title in the history list.
+  Future<LocalChatMessage?> getFirstMessage(String chatId) async {
+    final query = _messageBox
+        .query(LocalChatMessage_.chatId.equals(chatId))
+        .order(LocalChatMessage_.id)
+        .build();
+    final result = query.findFirst();
+    query.close();
+    return result;
+  }
+
+  Future<int> countMessages(String chatId) async {
+    final query = _messageBox
+        .query(LocalChatMessage_.chatId.equals(chatId))
+        .build();
+    final count = query.count();
+    query.close();
+    return count;
+  }
+
+  /// Deletes the conversation row AND every message that belongs to it.
+  Future<void> deleteChat(String chatId) async {
+    final messageQuery = _messageBox
+        .query(LocalChatMessage_.chatId.equals(chatId))
+        .build();
+    final messageIds = messageQuery.find().map((m) => m.id).toList();
+    messageQuery.close();
+    if (messageIds.isNotEmpty) {
+      _messageBox.removeMany(messageIds);
+    }
+
+    final chatQuery = _chatBox.query(LocalChat_.chatId.equals(chatId)).build();
+    final chat = chatQuery.findFirst();
+    chatQuery.close();
+    if (chat != null) {
+      _chatBox.remove(chat.id);
+    }
+  }
+
   Future<List<LocalChatMessage>> getPendingMessages() async {
-    final query = _messageBox.query(LocalChatMessage_.syncState.equals('pending')).order(LocalChatMessage_.id).build();
+    final query = _messageBox
+        .query(LocalChatMessage_.syncState.equals('pending'))
+        .order(LocalChatMessage_.id)
+        .build();
     final results = query.find();
     query.close();
     return results;
@@ -188,7 +257,9 @@ class ChatLocalDataSource {
   }
 
   Future<int> countPendingMessages() async {
-    final query = _messageBox.query(LocalChatMessage_.syncState.equals('pending')).build();
+    final query = _messageBox
+        .query(LocalChatMessage_.syncState.equals('pending'))
+        .build();
     final n = query.count();
     query.close();
     return n;
@@ -209,7 +280,9 @@ class ChatLocalDataSource {
   }
 
   /// Oldest pending events first. Pass [limit] to send in small batches.
-  Future<List<LocalTelemetryEvent>> getPendingTelemetryEvents({int? limit}) async {
+  Future<List<LocalTelemetryEvent>> getPendingTelemetryEvents({
+    int? limit,
+  }) async {
     final query = _telemetryBox
         .query(LocalTelemetryEvent_.syncState.equals('pending'))
         .order(LocalTelemetryEvent_.id)
@@ -220,7 +293,9 @@ class ChatLocalDataSource {
   }
 
   Future<int> countPendingTelemetry() async {
-    final query = _telemetryBox.query(LocalTelemetryEvent_.syncState.equals('pending')).build();
+    final query = _telemetryBox
+        .query(LocalTelemetryEvent_.syncState.equals('pending'))
+        .build();
     final n = query.count();
     query.close();
     return n;
@@ -229,7 +304,9 @@ class ChatLocalDataSource {
   /// How many events are in a given state ('pending', 'acknowledged',
   /// 'rejected'). Used by the diagnostics audit to show the real queue state.
   Future<int> countTelemetryByState(String syncState) async {
-    final query = _telemetryBox.query(LocalTelemetryEvent_.syncState.equals(syncState)).build();
+    final query = _telemetryBox
+        .query(LocalTelemetryEvent_.syncState.equals(syncState))
+        .build();
     final n = query.count();
     query.close();
     return n;
@@ -238,7 +315,9 @@ class ChatLocalDataSource {
   /// Marks ONLY the given event UUIDs as acknowledged. Everything else stays pending.
   Future<void> markTelemetryAcknowledged(List<String> eventUuids) async {
     if (eventUuids.isEmpty) return;
-    final query = _telemetryBox.query(LocalTelemetryEvent_.eventUuid.oneOf(eventUuids)).build();
+    final query = _telemetryBox
+        .query(LocalTelemetryEvent_.eventUuid.oneOf(eventUuids))
+        .build();
     final events = query.find();
     query.close();
 

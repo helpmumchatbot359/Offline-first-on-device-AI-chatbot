@@ -1,21 +1,31 @@
 import 'dart:async';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import '../../domain/chat_repository.dart';
+import '../../domain/chat_session.dart';
 import '../../domain/chat_turn.dart';
 import '../events/chat_event.dart';
 import '../states/chat_state.dart';
 
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ChatBloc(this._repo, {Connectivity? connectivity})
-      : _connectivity = connectivity ?? Connectivity(),
-        super(const ChatState()) {
+    : _connectivity = connectivity ?? Connectivity(),
+      super(const ChatState()) {
     on<ChatStarted>(_onStarted);
     on<MessageSent>(_onMessageSent);
     on<GenerationStopped>(_onStopped);
     on<NewChatStarted>(_onNewChat);
-    on<ConnectivityChanged>((e, emit) => emit(state.copyWith(isOnline: e.isOnline)));
-    on<FeedbackSubmitted>(_onFeedbackSubmitted); // NEW: registered feedback handler
+    on<ChatHistoryRequested>(_onChatHistoryRequested);
+    on<ChatOpened>(_onChatOpened);
+    on<ChatDeleted>(_onChatDeleted);
+    on<ConnectivityChanged>(
+      (e, emit) => emit(state.copyWith(isOnline: e.isOnline)),
+    );
+    on<FeedbackSubmitted>(
+      _onFeedbackSubmitted,
+    ); // NEW: registered feedback handler
   }
 
   final ChatRepository _repo; // the rules (interface), not the concrete class
@@ -27,45 +37,85 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
   Future<void> _onStarted(ChatStarted event, Emitter<ChatState> emit) async {
     var history = <ChatTurn>[];
+    var sessions = <ChatSession>[];
+    String? activeChatId;
     var online = true;
     try {
       history = await _repo.loadHistory(); // old messages survive restarts
     } catch (_) {}
     try {
+      activeChatId = await _repo.activeChatId();
+      sessions = await _repo.loadChatSessions();
+    } catch (_) {}
+    try {
       online = _hasNetwork(await _connectivity.checkConnectivity());
     } catch (_) {}
-    emit(state.copyWith(messages: history, isOnline: online, isLoading: false));
+    emit(
+      state.copyWith(
+        messages: history,
+        sessions: sessions,
+        activeChatId: activeChatId,
+        isOnline: online,
+        isLoading: false,
+      ),
+    );
 
     await _connectivitySub?.cancel();
-    _connectivitySub = _connectivity.onConnectivityChanged
-        .listen((r) => add(ConnectivityChanged(_hasNetwork(r))));
+    _connectivitySub = _connectivity.onConnectivityChanged.listen(
+      (r) => add(ConnectivityChanged(_hasNetwork(r))),
+    );
   }
 
-  Future<void> _onMessageSent(MessageSent event, Emitter<ChatState> emit) async {
+  Future<void> _onMessageSent(
+    MessageSent event,
+    Emitter<ChatState> emit,
+  ) async {
     if (state.isGenerating) return; // one question at a time
     emit(state.copyWith(isGenerating: true));
     try {
       await emit.forEach<ChatTurn>(
         _repo.sendMessage(event.text, isOnline: state.isOnline),
-        onData: (turn) => state.copyWith(messages: _upsert(state.messages, turn)),
+        onData: (turn) =>
+            state.copyWith(messages: _upsert(state.messages, turn)),
       );
     } catch (_) {
       // Never leave a bubble "typing" forever.
       final fixed = state.messages
-          .map((t) => t.isStreaming
-              ? t.copyWith(
-                  isStreaming: false,
-                  isError: true,
-                  aiResponse: 'Something went wrong. Please try again.',
-                )
-              : t)
+          .map(
+            (t) => t.isStreaming
+                ? t.copyWith(
+                    isStreaming: false,
+                    isError: true,
+                    aiResponse: 'Something went wrong. Please try again.',
+                  )
+                : t,
+          )
           .toList();
       emit(state.copyWith(messages: fixed));
     }
     emit(state.copyWith(isGenerating: false));
   }
 
-  Future<void> _onStopped(GenerationStopped event, Emitter<ChatState> emit) async {
+  /// Runs whenever the drawer opens, so a brand-new chat that has just saved
+  /// its first message appears in the list immediately.
+  Future<void> _onChatHistoryRequested(
+    ChatHistoryRequested event,
+    Emitter<ChatState> emit,
+  ) async {
+    if (state.isLoading) return;
+    try {
+      final sessions = await _repo.loadChatSessions();
+      final activeChatId = await _repo.activeChatId();
+      emit(state.copyWith(sessions: sessions, activeChatId: activeChatId));
+    } catch (_) {
+      // Keep the list that is already on screen.
+    }
+  }
+
+  Future<void> _onStopped(
+    GenerationStopped event,
+    Emitter<ChatState> emit,
+  ) async {
     await _repo.cancelGeneration();
   }
 
@@ -82,16 +132,83 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     emit(state.copyWith(isGenerating: true));
     try {
       await _repo.startNewChat();
-      emit(state.copyWith(messages: const [], isGenerating: false, isLoading: false));
+      final activeChatId = await _repo.activeChatId();
+      final sessions = await _repo.loadChatSessions();
+      emit(
+        state.copyWith(
+          messages: const [],
+          sessions: sessions,
+          activeChatId: activeChatId,
+          isGenerating: false,
+          isLoading: false,
+        ),
+      );
     } catch (_) {
       // Storage failed: keep the old chat on screen rather than show a lie.
       emit(state.copyWith(isGenerating: false));
     }
   }
 
+  /// The person tapped a saved conversation in the history drawer.
+  Future<void> _onChatOpened(ChatOpened event, Emitter<ChatState> emit) async {
+    if (state.isGenerating || state.isLoading) return;
+    if (event.chatId == state.activeChatId) return;
+
+    // Borrow the "busy" flag so no message can be sent while the old chat
+    // is being swapped for the selected one.
+    emit(state.copyWith(isGenerating: true));
+    try {
+      await _repo.openChat(event.chatId);
+      final history = await _repo.loadHistory();
+      final sessions = await _repo.loadChatSessions();
+      emit(
+        state.copyWith(
+          messages: history,
+          sessions: sessions,
+          activeChatId: event.chatId,
+          isGenerating: false,
+          isLoading: false,
+        ),
+      );
+    } catch (_) {
+      emit(state.copyWith(isGenerating: false));
+    }
+  }
+
+  /// The person deleted a conversation from the history drawer.
+  Future<void> _onChatDeleted(
+    ChatDeleted event,
+    Emitter<ChatState> emit,
+  ) async {
+    if (state.isGenerating || state.isLoading) return;
+
+    emit(state.copyWith(isGenerating: true));
+    try {
+      await _repo.deleteChat(event.chatId);
+      // If the deleted chat was open, the repository already moved us to a
+      // fresh chat. Loading history now gives the correct new state.
+      final history = await _repo.loadHistory();
+      final sessions = await _repo.loadChatSessions();
+      final activeChatId = await _repo.activeChatId();
+      emit(
+        state.copyWith(
+          messages: history,
+          sessions: sessions,
+          activeChatId: activeChatId,
+          isGenerating: false,
+          isLoading: false,
+        ),
+      );
+    } catch (_) {
+      emit(state.copyWith(isGenerating: false));
+    }
+  }
+
   /// NEW: Handles the feedback submission event by notifying the repository.
   Future<void> _onFeedbackSubmitted(
-      FeedbackSubmitted event, Emitter<ChatState> emit) async {
+    FeedbackSubmitted event,
+    Emitter<ChatState> emit,
+  ) async {
     try {
       await _repo.submitFeedback(
         feedbackValue: event.feedbackValue,

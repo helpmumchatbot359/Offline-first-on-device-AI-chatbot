@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'core/security/token_storage.dart';
 import 'core/theme/app_theme.dart';
@@ -97,7 +98,16 @@ class AuthGate extends StatelessWidget {
       builder: (context, s) {
         switch (s.status) {
           case AuthStatus.unknown:
-            return const Scaffold(body: Center(child: MamaLogo(size: 110)));
+            // No app bar on the splash, so pick status-bar icons that match
+            // the bare scaffold colour (black in dark mode, near-white in light).
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value:
+                  (Theme.of(context).brightness == Brightness.dark
+                          ? SystemUiOverlayStyle.light
+                          : SystemUiOverlayStyle.dark)
+                      .copyWith(statusBarColor: Colors.transparent),
+              child: const Scaffold(body: Center(child: MamaLogo(size: 110))),
+            );
           case AuthStatus.authenticated:
             return MultiBlocProvider(
               providers: [

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import '../bloc/auth_bloc.dart';
 import '../events/auth_event.dart';
 import '../states/auth_state.dart';
@@ -23,8 +24,13 @@ class _AuthPageState extends State<AuthPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _usernameController = TextEditingController();
-  final _genderController = TextEditingController();
   final _countryController = TextEditingController();
+
+  // The password starts hidden. The eye button flips this flag.
+  bool _obscurePassword = true;
+
+  // A fixed list avoids typos like "femal", "Femail" or "male ".
+  String? _selectedGender;
 
   // Regex pattern for standard email format verification
   static final RegExp _emailRegExp = RegExp(
@@ -42,7 +48,6 @@ class _AuthPageState extends State<AuthPage> {
     _emailController.dispose();
     _passwordController.dispose();
     _usernameController.dispose();
-    _genderController.dispose();
     _countryController.dispose();
     super.dispose();
   }
@@ -57,18 +62,22 @@ class _AuthPageState extends State<AuthPage> {
 
     // 2. Dispatch events to AuthBloc if validation passes
     if (_isSignIn) {
-      authBloc.add(SignInSubmitted(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-      ));
+      authBloc.add(
+        SignInSubmitted(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+        ),
+      );
     } else {
-      authBloc.add(SignUpSubmitted(
-        username: _usernameController.text.trim(),
-        gender: _genderController.text.trim(),
-        email: _emailController.text.trim(),
-        country: _countryController.text.trim(),
-        password: _passwordController.text.trim(),
-      ));
+      authBloc.add(
+        SignUpSubmitted(
+          username: _usernameController.text.trim(),
+          gender: _selectedGender ?? '',
+          email: _emailController.text.trim(),
+          country: _countryController.text.trim(),
+          password: _passwordController.text.trim(),
+        ),
+      );
     }
   }
 
@@ -77,10 +86,7 @@ class _AuthPageState extends State<AuthPage> {
     return RichText(
       text: TextSpan(
         text: labelText,
-        style: TextStyle(
-          color: colorScheme.onSurfaceVariant,
-          fontSize: 16,
-        ),
+        style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 16),
         children: [
           TextSpan(
             text: ' *',
@@ -105,9 +111,8 @@ class _AuthPageState extends State<AuthPage> {
       body: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, state) {
           if (state.error != null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.error!)),
-            );
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(state.error!)));
           }
         },
         builder: (context, state) {
@@ -146,17 +151,31 @@ class _AuthPageState extends State<AuthPage> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _genderController,
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedGender,
+                      isExpanded: true,
                       decoration: InputDecoration(
-                        label: _buildRequiredLabel(
-                          'Gender (e.g., Female, Male)',
-                          colorScheme,
-                        ),
+                        label: _buildRequiredLabel('Gender', colorScheme),
                       ),
+                      hint: Text(
+                        'Select your gender',
+                        style: TextStyle(color: colorScheme.onSurfaceVariant),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Female',
+                          child: Text('Female'),
+                        ),
+                        DropdownMenuItem(value: 'Male', child: Text('Male')),
+                      ],
+                      onChanged: (value) {
+                        // No setState needed: the dropdown shows its own
+                        // selection, and this variable is read on submit.
+                        _selectedGender = value;
+                      },
                       validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Please specify your gender';
+                        if (value == null || value.isEmpty) {
+                          return 'Please select your gender';
                         }
                         return null;
                       },
@@ -200,9 +219,27 @@ class _AuthPageState extends State<AuthPage> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _passwordController,
-                    obscureText: true,
+                    obscureText: _obscurePassword,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) {
+                      if (!state.busy) _submit(context);
+                    },
                     decoration: InputDecoration(
                       label: _buildRequiredLabel('Password', colorScheme),
+                      // Eye button: shows or hides what was typed.
+                      suffixIcon: IconButton(
+                        tooltip: _obscurePassword
+                            ? 'Show password'
+                            : 'Hide password',
+                        onPressed: () {
+                          setState(() => _obscurePassword = !_obscurePassword);
+                        },
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                        ),
+                      ),
                     ),
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
@@ -238,6 +275,8 @@ class _AuthPageState extends State<AuthPage> {
                       _formKey.currentState?.reset();
                       setState(() {
                         _isSignIn = !_isSignIn;
+                        _selectedGender = null;
+                        _obscurePassword = true;
                       });
                     },
                     child: Text(

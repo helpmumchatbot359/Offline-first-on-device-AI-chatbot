@@ -27,6 +27,27 @@ class NewChatStarted extends ChatEvent {
   const NewChatStarted();
 }
 
+/// The history drawer was opened: make sure the list is up to date.
+class ChatHistoryRequested extends ChatEvent {
+  const ChatHistoryRequested();
+}
+
+/// The person picked an old conversation from the history drawer.
+class ChatOpened extends ChatEvent {
+  const ChatOpened(this.chatId);
+  final String chatId;
+  @override
+  List<Object?> get props => [chatId];
+}
+
+/// The person deleted a conversation from the history drawer.
+class ChatDeleted extends ChatEvent {
+  const ChatDeleted(this.chatId);
+  final String chatId;
+  @override
+  List<Object?> get props => [chatId];
+}
+
 /// Internal: the phone went online/offline.
 class ConnectivityChanged extends ChatEvent {
   const ConnectivityChanged(this.isOnline);

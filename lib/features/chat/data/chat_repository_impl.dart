@@ -1,9 +1,12 @@
 import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart'; // debugPrint, kDebugMode
+
 import 'ai/native_offline_ai_service.dart';
 import 'ai/model_setup_service.dart';
 import '../domain/chat_repository.dart';
+import '../domain/chat_session.dart';
 import '../domain/chat_turn.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/config/env.dart';
@@ -12,6 +15,7 @@ import 'local/chat_local_data_source.dart';
 import 'local/diagnostic_logger.dart';
 import 'telemetry/device_telemetry.dart';
 import 'telemetry/telemetry_recorder.dart';
+
 import 'package:uuid/uuid.dart';
 
 class ChatRepositoryImpl implements ChatRepository {
@@ -22,7 +26,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required this.nativeAiService,
     required this.diagnosticLogger,
     required this.modelSetupService,
-    required this.telemetry, 
+    required this.telemetry,
   });
 
   final ApiClient apiClient;
@@ -31,9 +35,8 @@ class ChatRepositoryImpl implements ChatRepository {
   final NativeOfflineAiService nativeAiService;
   final DiagnosticLogger diagnosticLogger;
   final ModelSetupService modelSetupService;
-  final TelemetryRecorder telemetry; 
+  final TelemetryRecorder telemetry;
 
-  
   static const _recordCloudFallbackAsOffline = true;
 
   // ---- The "stop switches" for the answer that is being written right now ----
@@ -48,16 +51,65 @@ class ChatRepositoryImpl implements ChatRepository {
     final localMessages = await localDataSource.getMessages(chatId);
 
     return localMessages
-        .map((msg) => ChatTurn(
-              id: msg.id.toString(),
-              message: msg.message,
-              aiResponse: msg.aiResponse,
-              date: msg.date,
-              state: msg.source == 'offline' ? 'offline' : 'online',
-              synced: msg.syncState == 'acknowledged',
-              isError: msg.syncState == ChatLocalDataSource.stateInterrupted,
-            ))
+        .map(
+          (msg) => ChatTurn(
+            id: msg.id.toString(),
+            message: msg.message,
+            aiResponse: msg.aiResponse,
+            date: msg.date,
+            state: msg.source == 'offline' ? 'offline' : 'online',
+            synced: msg.syncState == 'acknowledged',
+            isError: msg.syncState == ChatLocalDataSource.stateInterrupted,
+          ),
+        )
         .toList();
+  }
+
+  @override
+  Future<List<ChatSession>> loadChatSessions() async {
+    final chats = await localDataSource.getChats();
+    final sessions = <ChatSession>[];
+
+    for (final chat in chats) {
+      final count = await localDataSource.countMessages(chat.chatId);
+      if (count == 0) continue; // a chat with no messages is not worth showing
+
+      final first = await localDataSource.getFirstMessage(chat.chatId);
+      sessions.add(
+        ChatSession(
+          id: chat.chatId,
+          title: _shortTitle(first?.message),
+          updatedAt: chat.updatedAt,
+          messageCount: count,
+        ),
+      );
+    }
+    return sessions;
+  }
+
+  @override
+  Future<String> activeChatId() => tokenStorage.activeChatId();
+
+  @override
+  Future<void> openChat(String chatId) => tokenStorage.setActiveChat(chatId);
+
+  @override
+  Future<void> deleteChat(String chatId) async {
+    await localDataSource.deleteChat(chatId);
+
+    // If the deleted chat was the open one, move to a fresh blank chat.
+    final active = await tokenStorage.activeChatId();
+    if (active == chatId) {
+      await tokenStorage.startNewChat();
+    }
+  }
+
+  /// One-line title for the history drawer.
+  static String _shortTitle(String? text) {
+    final clean = (text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (clean.isEmpty) return 'New chat';
+    if (clean.length <= 48) return clean;
+    return '${clean.substring(0, 48).trimRight()}…';
   }
 
   @override
@@ -106,7 +158,8 @@ class ChatRepositoryImpl implements ChatRepository {
     var usedOffline = !isOnline;
     Object? cloudError; // remembered so we can explain it if offline also fails
     var needOffline = !isOnline;
-    final overall = Stopwatch()..start(); // only for the separate diagnostic log
+    final overall = Stopwatch()
+      ..start(); // only for the separate diagnostic log
 
     // TELEMETRY bookkeeping (only used when the on-phone model is involved)
     final run = OfflineRun(
@@ -126,7 +179,10 @@ class ChatRepositoryImpl implements ChatRepository {
       if (isOnline) {
         try {
           aiResponse = await _askCloud(text, chatId, cancelToken);
-          currentTurn = currentTurn.copyWith(aiResponse: aiResponse, state: 'online');
+          currentTurn = currentTurn.copyWith(
+            aiResponse: aiResponse,
+            state: 'online',
+          );
           yield currentTurn;
         } catch (e) {
           if (stop.isCompleted) {
@@ -155,23 +211,40 @@ class ChatRepositoryImpl implements ChatRepository {
         offlineAttempted = true;
         aiResponse = '';
         try {
-          await for (final event in _offlineEvents(userId, chatId, text, stop, run, isOnline: isOnline)) {
+          await for (final event in _offlineEvents(
+            userId,
+            chatId,
+            text,
+            stop,
+            run,
+            isOnline: isOnline,
+          )) {
             if (event.type == AiEventType.token) {
               aiResponse += event.text;
               // Save progress at most every 1.5 s (a database write per word would be wasteful).
               if (rowId != null && saveClock.elapsedMilliseconds >= 1500) {
                 saveClock.reset();
                 try {
-                  await localDataSource.updateTurn(rowId, aiResponse: aiResponse, source: 'offline');
+                  await localDataSource.updateTurn(
+                    rowId,
+                    aiResponse: aiResponse,
+                    source: 'offline',
+                  );
                 } catch (_) {}
               }
-              currentTurn = currentTurn.copyWith(aiResponse: aiResponse, state: 'offline');
+              currentTurn = currentTurn.copyWith(
+                aiResponse: aiResponse,
+                state: 'offline',
+              );
               yield currentTurn;
             } else if (event.type == AiEventType.completed) {
               if (aiResponse.isEmpty && event.text.isNotEmpty) {
                 aiResponse = event.text;
               }
-              currentTurn = currentTurn.copyWith(aiResponse: aiResponse, state: 'offline');
+              currentTurn = currentTurn.copyWith(
+                aiResponse: aiResponse,
+                state: 'offline',
+              );
               yield currentTurn;
             } else if (event.type == AiEventType.error) {
               throw Exception(event.error);
@@ -187,10 +260,12 @@ class ChatRepositoryImpl implements ChatRepository {
             success = false;
             failure = classifyOfflineError(e, run); // TELEMETRY: contract words
             if (cloudError != null) {
-              aiResponse = '${_friendlyCloudMessage(cloudError)}\n\n'
+              aiResponse =
+                  '${_friendlyCloudMessage(cloudError)}\n\n'
                   'The offline assistant also failed: $e';
             } else if (e.toString().contains('offline_model_missing')) {
-              aiResponse = 'You are offline, and the optional offline assistant is not '
+              aiResponse =
+                  'You are offline, and the optional offline assistant is not '
                   'downloaded. Please download it from the banner above.';
             } else {
               aiResponse = 'The offline assistant encountered an error: $e';
@@ -274,7 +349,9 @@ class ChatRepositoryImpl implements ChatRepository {
             metrics: {
               'event_type': 'offline_inference',
               'chat_id': chatId,
-              'error': e.toString().length > 500 ? e.toString().substring(0, 500) : e.toString(),
+              'error': e.toString().length > 500
+                  ? e.toString().substring(0, 500)
+                  : e.toString(),
             },
           );
         }
@@ -307,8 +384,10 @@ class ChatRepositoryImpl implements ChatRepository {
         'retrieved_passage_count': run.retrievedPassageCount ?? 0,
         'streamed': run.streamed,
         if (run.modelLoadMs != null) 'model_load_ms': run.modelLoadMs,
-        if (run.nativeOutputTokens != null) 'output_tokens': run.nativeOutputTokens,
-        if (run.firstTokenMs != null) 'time_to_first_token_ms': run.firstTokenMs,
+        if (run.nativeOutputTokens != null)
+          'output_tokens': run.nativeOutputTokens,
+        if (run.firstTokenMs != null)
+          'time_to_first_token_ms': run.firstTokenMs,
         ...runtimeDiagnostics,
       },
     );
@@ -416,13 +495,21 @@ class ChatRepositoryImpl implements ChatRepository {
     final text = error.toString().toLowerCase();
 
     // 1) Out of memory is its own runtime failure.
-    if (text.contains('out of memory') || text.contains('outofmemory') || RegExp(r'\boom\b').hasMatch(text)) {
-      return OfflineFailure.runtime('OUT_OF_MEMORY', 'out_of_memory', run.stage);
+    if (text.contains('out of memory') ||
+        text.contains('outofmemory') ||
+        RegExp(r'\boom\b').hasMatch(text)) {
+      return OfflineFailure.runtime(
+        'OUT_OF_MEMORY',
+        'out_of_memory',
+        run.stage,
+      );
     }
     // 2) If Android already sent a valid contract code, trust it.
     final nativeCode = run.nativeErrorCode;
-    if (nativeCode != null && TelemetryContract.inferenceErrorCodes.contains(nativeCode)) {
-      final stage = TelemetryContract.inferenceErrorStages.contains(run.nativeErrorStage)
+    if (nativeCode != null &&
+        TelemetryContract.inferenceErrorCodes.contains(nativeCode)) {
+      final stage =
+          TelemetryContract.inferenceErrorStages.contains(run.nativeErrorStage)
           ? run.nativeErrorStage!
           : run.stage;
       return OfflineFailure.inference(nativeCode, stage);
@@ -432,11 +519,16 @@ class ChatRepositoryImpl implements ChatRepository {
       return OfflineFailure.inference('MODEL_UNAVAILABLE', 'model_load');
     }
     // 4) Took too long (Android's 120 s limit, or our 4 minute watchdog).
-    if (text.contains('timeout') || text.contains('timed out') || text.contains('stopped responding')) {
+    if (text.contains('timeout') ||
+        text.contains('timed out') ||
+        text.contains('stopped responding')) {
       return OfflineFailure.inference('GENERATION_TIMEOUT', run.stage);
     }
     // 5) The question + knowledge did not fit in the model's memory window.
-    if (text.contains('context') && (text.contains('limit') || text.contains('length') || text.contains('window'))) {
+    if (text.contains('context') &&
+        (text.contains('limit') ||
+            text.contains('length') ||
+            text.contains('window'))) {
       return OfflineFailure.inference('CONTEXT_LIMIT', 'context_build');
     }
     // 6) A tool failed. ONLY when a tool call really happened (tool_used = true).
@@ -447,28 +539,36 @@ class ChatRepositoryImpl implements ChatRepository {
       return OfflineFailure.inference('TOOL_ERROR', 'tool_execution');
     }
     // 7) Unknown generation failure.
-    return OfflineFailure.runtime('GENERATION_FAILED', 'generation_failure', run.stage);
+    return OfflineFailure.runtime(
+      'GENERATION_FAILED',
+      'generation_failure',
+      run.stage,
+    );
   }
 
   // ---------------------------------------------------------------------------
   // Ask the cloud. Returns the answer text, or throws.
   // ---------------------------------------------------------------------------
-  Future<String> _askCloud(String text, String chatId, CancelToken cancelToken) async {
+  Future<String> _askCloud(
+    String text,
+    String chatId,
+    CancelToken cancelToken,
+  ) async {
     if (Env.apiKey.isEmpty) {
       throw Exception('missing_api_key');
     }
 
     Future<Response<dynamic>> send() => apiClient.dio.post(
-          '/user/chat',
-          data: {'message': text},
-          cancelToken: cancelToken, // <- this is what lets Stop hang up
-          options: Options(
-            headers: {'X-CHAT-ID': chatId},
-            sendTimeout: const Duration(seconds: 20),
-            // AI answers (especially the first one after a pause) can be slow.
-            receiveTimeout: const Duration(seconds: 90),
-          ),
-        );
+      '/user/chat',
+      data: {'message': text},
+      cancelToken: cancelToken, // <- this is what lets Stop hang up
+      options: Options(
+        headers: {'X-CHAT-ID': chatId},
+        sendTimeout: const Duration(seconds: 20),
+        // AI answers (especially the first one after a pause) can be slow.
+        receiveTimeout: const Duration(seconds: 90),
+      ),
+    );
 
     Response<dynamic> response;
     try {
@@ -477,7 +577,8 @@ class ChatRepositoryImpl implements ChatRepository {
       // A shaky mobile network often fails once and works a second later.
       // We retry ONLY when the request never reached the server, so the
       // question can never be asked twice.
-      final neverArrived = e.type == DioExceptionType.connectionError ||
+      final neverArrived =
+          e.type == DioExceptionType.connectionError ||
           e.type == DioExceptionType.connectionTimeout;
       if (!neverArrived) rethrow;
       await Future<void>.delayed(const Duration(seconds: 1));
@@ -486,7 +587,6 @@ class ChatRepositoryImpl implements ChatRepository {
 
     debugPrint('CLOUD CHAT <- status ${response.statusCode}');
 
-    
     final data = response.data;
     final answer = data is Map ? data['ai_response'] : null;
     if (answer is! String || answer.trim().isEmpty) {
@@ -573,7 +673,10 @@ class ChatRepositoryImpl implements ChatRepository {
   /// [feedbackValue] must be 'positive', 'negative' or 'not_helpful'.
   /// Only the rating (+ optional short comment) is stored: never the answer text.
   @override
-  Future<void> submitFeedback({required String feedbackValue, String? comment}) async {
+  Future<void> submitFeedback({
+    required String feedbackValue,
+    String? comment,
+  }) async {
     final chatId = await tokenStorage.activeChatId();
     await telemetry.recordOfflineFeedback(
       chatId: chatId,
@@ -594,10 +697,15 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<void> cancelGeneration() async {
     final stop = _stop;
-    if (stop != null && !stop.isCompleted) stop.complete(); // 1) tell our own code
-    _cloudCancel?.cancel('stopped by user'); //                 2) hang up the internet call
+    if (stop != null && !stop.isCompleted)
+      stop.complete(); // 1) tell our own code
+    _cloudCancel?.cancel(
+      'stopped by user',
+    ); //                 2) hang up the internet call
     final chatId = await tokenStorage.activeChatId();
-    await nativeAiService.cancelGeneration(chatId); //          3) tell Android to stop
+    await nativeAiService.cancelGeneration(
+      chatId,
+    ); //          3) tell Android to stop
   }
 
   /// Turns any error into a plain sentence describing what REALLY happened.
@@ -650,7 +758,6 @@ class ChatRepositoryImpl implements ChatRepository {
     }
     return 'Could not reach the cloud server. Please check your internet and try again.';
   }
-
 }
 
 // =============================================================================
@@ -661,7 +768,7 @@ class ChatRepositoryImpl implements ChatRepository {
 @visibleForTesting
 class OfflineRun {
   OfflineRun({DeviceEnvelopeSampler? envelope})
-      : envelope = envelope ?? DeviceEnvelopeSampler(DeviceTelemetry());
+    : envelope = envelope ?? DeviceEnvelopeSampler(DeviceTelemetry());
 
   /// Samples the phone's memory/thermal/battery while this answer runs.
   final DeviceEnvelopeSampler envelope;
@@ -697,12 +804,20 @@ class OfflineRun {
     final raw = event.raw;
 
     nativeOutputTokens =
-        _firstInt(raw, const ['output_tokens', 'token_count', 'generated_tokens']) ?? nativeOutputTokens;
+        _firstInt(raw, const [
+          'output_tokens',
+          'token_count',
+          'generated_tokens',
+        ]) ??
+        nativeOutputTokens;
 
     // TELEMETRY: Android states the truth about tools on tool_result / completed / error.
     if (raw['tool_used'] == true) toolUsed = true;
     if (raw['tool_error'] == true) toolFailed = true;
-    final reportedCount = _firstInt(raw, const ['retrieved_passage_count', 'passage_count']);
+    final reportedCount = _firstInt(raw, const [
+      'retrieved_passage_count',
+      'passage_count',
+    ]);
     if (reportedCount != null) retrievedPassageCount = reportedCount;
 
     switch (event.type) {
@@ -714,7 +829,8 @@ class OfflineRun {
         break;
       case AiEventType.retrievalContext:
         // Android sends the passages as "citations" (and their ids as "context_ids").
-        final listed = raw['passages'] ?? raw['citations'] ?? raw['context_ids'];
+        final listed =
+            raw['passages'] ?? raw['citations'] ?? raw['context_ids'];
         if (listed is List) retrievedPassageCount = listed.length;
         break;
       case AiEventType.toolCallRequested:
@@ -746,8 +862,14 @@ class OfflineRun {
     final generationStart = generationStartedMs;
 
     double? tokensPerSecond;
-    if (tokens != null && tokens > 1 && first != null && last != null && last > first) {
-      tokensPerSecond = double.parse(((tokens - 1) / ((last - first) / 1000)).toStringAsFixed(1));
+    if (tokens != null &&
+        tokens > 1 &&
+        first != null &&
+        last != null &&
+        last > first) {
+      tokensPerSecond = double.parse(
+        ((tokens - 1) / ((last - first) / 1000)).toStringAsFixed(1),
+      );
     }
 
     return {
@@ -771,10 +893,7 @@ class OfflineRun {
   /// Everything above + the device envelope measured while the answer ran.
   Future<Map<String, Object?>> fullResponseMetadata() async {
     final envelopeMetadata = await envelope.metadata();
-    return {
-      ...responseMetadata(),
-      ...envelopeMetadata,
-    };
+    return {...responseMetadata(), ...envelopeMetadata};
   }
 
   static int? _firstInt(Map<String, dynamic> raw, List<String> keys) {
