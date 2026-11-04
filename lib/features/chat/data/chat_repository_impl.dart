@@ -1,13 +1,3 @@
-// WHAT CHANGED (search for "TELEMETRY" in this file):
-//  * No more telemetry for online answers (the contract has no such event).
-//  * ONE offline_inference event per on-phone request: success, error OR cancelled.
-//  * latency = time the ON-PHONE model took (the cloud attempt is NOT included).
-//  * error codes / stages / outcome use ONLY the contract's words.
-//  * output_tokens is never guessed from text length any more.
-//  * metadata is built with jsonEncode (valid JSON), never as a hand-made string.
-//  * Telemetry is written in a `finally` block, so it is saved even if the
-//    screen closes in the middle of an answer.
-//  * A crash marker lets the next app start report a runtime_failure.
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart'; // debugPrint, kDebugMode
@@ -32,7 +22,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required this.nativeAiService,
     required this.diagnosticLogger,
     required this.modelSetupService,
-    required this.telemetry, // NEW
+    required this.telemetry, 
   });
 
   final ApiClient apiClient;
@@ -41,11 +31,9 @@ class ChatRepositoryImpl implements ChatRepository {
   final NativeOfflineAiService nativeAiService;
   final DiagnosticLogger diagnosticLogger;
   final ModelSetupService modelSetupService;
-  final TelemetryRecorder telemetry; // NEW: the only thing that creates telemetry
+  final TelemetryRecorder telemetry; 
 
-  /// When the cloud fails and the phone model answers instead, is that an
-  /// "offline_inference"? The contract says "every local AI request made while
-  /// offline". true = yes (we count it). Confirm with the backend engineer.
+  
   static const _recordCloudFallbackAsOffline = true;
 
   // ---- The "stop switches" for the answer that is being written right now ----
@@ -498,7 +486,7 @@ class ChatRepositoryImpl implements ChatRepository {
 
     debugPrint('CLOUD CHAT <- status ${response.statusCode}');
 
-    // Never invent an answer. If the reply is not what we expect, say so.
+    
     final data = response.data;
     final answer = data is Map ? data['ai_response'] : null;
     if (answer is! String || answer.trim().isEmpty) {

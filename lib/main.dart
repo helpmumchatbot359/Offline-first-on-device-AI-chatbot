@@ -15,7 +15,7 @@ import 'features/chat/data/local/chat_local_data_source.dart';
 import 'features/chat/data/local/diagnostic_logger.dart';
 import 'features/chat/data/sync/sync_service.dart';
 import 'features/chat/data/telemetry/device_telemetry.dart'; // TELEMETRY: device envelope
-import 'features/chat/data/telemetry/telemetry_recorder.dart'; // TELEMETRY: new
+import 'features/chat/data/telemetry/telemetry_recorder.dart'; 
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -73,8 +73,8 @@ Future<void> main() async {
     tokenStorage: tokenStorage,
     nativeAiService: nativeAiService,
     diagnosticLogger: diagnosticLogger,
-    modelSetupService: modelSetupService, // Passed securely here
-    telemetry: telemetry, // TELEMETRY: new
+    modelSetupService: modelSetupService, 
+    telemetry: telemetry, 
   );
   
   final syncService = SyncService(
@@ -82,9 +82,9 @@ Future<void> main() async {
     Connectivity(),
     localDataSource,
     diagnosticLogger,
-    telemetry: telemetry, // TELEMETRY: new
-    tokenStorage: tokenStorage, // TELEMETRY: new
-    modelSetupService: modelSetupService, // TELEMETRY: new
+    telemetry: telemetry, 
+    tokenStorage: tokenStorage, 
+    modelSetupService: modelSetupService, 
   );
   // Upload a freshly created telemetry event immediately (if online).
   // Without this, an event could wait until the next connectivity change.

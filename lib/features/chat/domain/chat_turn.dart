@@ -1,7 +1,5 @@
 import 'package:equatable/equatable.dart';
 
-/// One question and its answer. Replaces the loose `Map<String, dynamic>`
-/// so typos like record['mesage'] become compile errors, not blank bubbles.
 class ChatTurn extends Equatable {
   const ChatTurn({
     required this.id,

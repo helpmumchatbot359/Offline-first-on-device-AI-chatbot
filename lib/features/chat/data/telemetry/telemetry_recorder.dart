@@ -1,21 +1,3 @@
-// NEW FILE  ->  lib/features/chat/data/telemetry/telemetry_recorder.dart
-//
-// WHY THIS FILE EXISTS (read this first, beginner friendly)
-// ---------------------------------------------------------
-// Before, telemetry events were built "by hand" in several places, with
-// free-text values like 'online_inference' or 'offline_mode'. The backend only
-// accepts the exact words written in the contract, so it refused your events.
-//
-// Now there is ONE place that creates telemetry:
-//   1. TelemetryContract : every allowed word from the contract, written once.
-//                          It can also CHECK an event before it is stored.
-//   2. TelemetryRecorder : one method per event type (offline_started,
-//                          offline_inference, offline_feedback,
-//                          runtime_failure, sync_error).
-//
-// Rule: if an event does not follow the contract, it is NOT stored
-// (a stored bad event would block every good event behind it, see notes).
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -30,13 +12,10 @@ import '../local/diagnostic_logger.dart';
 import '../local/entities/local_telemetry_entity.dart';
 import 'device_telemetry.dart';
 
-// =============================================================================
-// 1) THE CONTRACT, WRITTEN AS CODE
-// =============================================================================
+
 class TelemetryContract {
   TelemetryContract._();
 
-  /// The local model's version label, exactly as in the contract examples.
   static const modelVersion = 'gemma-4-e2b-mobile';
 
   // The ONLY five event types. Nothing else (e.g. 'online_inference') is allowed.
@@ -568,9 +547,6 @@ class TelemetryRecorder {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // offline_feedback : the user rated an offline answer
-  // ---------------------------------------------------------------------------
   Future<void> recordOfflineFeedback({
     required String chatId,
     String? modelVersion,
