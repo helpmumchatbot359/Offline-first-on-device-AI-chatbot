@@ -59,6 +59,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
     final brand = context.brandColors;
     final isDark = theme.brightness == Brightness.dark;
 
+    // Spread the gradient evenly across however many colours the theme
+    // supplies. This is what makes the wash "flow" instead of jumping from
+    // one shade to the next.
+    final gradientStops = List<double>.generate(
+      brand.backgroundGradient.length,
+      (i) => i / (brand.backgroundGradient.length - 1),
+    );
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       // No AppBar exists here, so the status-bar icons need to be told which
       // colour to use. White icons in dark mode, dark icons in light mode.
@@ -76,14 +84,15 @@ class _OnboardingPageState extends State<OnboardingPage> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: brand.backgroundGradient,
-                    stops: const [0.0, 0.55, 1.0],
+                    stops: gradientStops,
                   ),
                 ),
               ),
             ),
 
             // 2) Slow-moving light blobs on top of the wash. This is the
-            //    "Gemini-like" glow, using our own green family.
+            //    "Gemini-like" glow: mostly muted green, with a cool slate
+            //    blob so the screen does not become green everywhere.
             Positioned.fill(
               child: _AuroraBackground(colors: brand.aurora, isDark: isDark),
             ),
@@ -283,17 +292,17 @@ class _SlideView extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    scheme.primary.withValues(alpha: isDark ? 0.85 : 0.7),
+                    scheme.primary.withValues(alpha: isDark ? 0.55 : 0.45),
                     brand.glassBorder,
                   ],
                 ),
                 boxShadow: [
                   BoxShadow(
                     color: scheme.primary.withValues(
-                      alpha: isDark ? 0.28 : 0.18,
+                      alpha: isDark ? 0.14 : 0.08,
                     ),
-                    blurRadius: 48,
-                    spreadRadius: 8,
+                    blurRadius: 36,
+                    spreadRadius: 2,
                   ),
                 ],
               ),
@@ -361,9 +370,9 @@ class _GradientButton extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: brand.ctaGradient.last.withValues(alpha: 0.35),
-              blurRadius: 22,
-              offset: const Offset(0, 9),
+              color: brand.ctaGradient.last.withValues(alpha: 0.22),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
@@ -481,7 +490,9 @@ class _AuroraPainter extends CustomPainter {
     final t = animation.value * math.pi * 2;
     final w = size.width;
     final h = size.height;
-    final strength = isDark ? 0.46 : 0.34;
+    // Much softer than before. The old 0.46/0.34 values painted a bright green
+    // fog over the whole screen. This is a hint of colour, not a wash.
+    final strength = isDark ? 0.20 : 0.13;
 
     // The light is deliberately anchored to the bottom of the screen, like the
     // blue pool in Gemini. The top half stays almost pure black (dark mode) or

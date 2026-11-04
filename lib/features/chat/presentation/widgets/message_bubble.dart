@@ -1,6 +1,8 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import '../../../../core/theme/app_theme.dart';
 import '../../domain/chat_turn.dart';
 import '../bloc/chat_bloc.dart';
@@ -37,21 +39,23 @@ class _UserBubble extends StatelessWidget {
     return Align(
       alignment: Alignment.centerRight,
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.82),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+        ),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
           decoration: BoxDecoration(
             color: c.userBubble,
             borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(18),
-              topRight: Radius.circular(18),
-              bottomLeft: Radius.circular(18),
-              bottomRight: Radius.circular(4),
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+              bottomLeft: Radius.circular(20),
+              bottomRight: Radius.circular(6),
             ),
           ),
           child: SelectableText(
             text,
-            style: TextStyle(color: c.onUserBubble, fontSize: 16, height: 1.35),
+            style: TextStyle(color: c.onUserBubble, fontSize: 16, height: 1.4),
           ),
         ),
       ),
@@ -75,24 +79,28 @@ class _AiBubble extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         CircleAvatar(
-          radius: 15,
-          backgroundColor: scheme.primaryContainer,
-          child: Icon(Icons.favorite_rounded, size: 16, color: scheme.onPrimaryContainer),
+          radius: 16,
+          // Neutral avatar in both themes. The tiny green heart is enough of
+          // a brand cue; a full green circle would add another loud surface.
+          backgroundColor: scheme.surfaceContainerHighest,
+          child: Icon(Icons.favorite_rounded, size: 16, color: scheme.primary),
         ),
         const SizedBox(width: 8),
         Flexible(
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.8),
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(context).width * 0.8,
+            ),
             child: Container(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+              padding: const EdgeInsets.fromLTRB(15, 11, 15, 9),
               decoration: BoxDecoration(
                 color: bg,
                 border: Border.all(color: c.aiBubbleBorder),
                 borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(4),
-                  topRight: Radius.circular(18),
-                  bottomLeft: Radius.circular(18),
-                  bottomRight: Radius.circular(18),
+                  topLeft: Radius.circular(6),
+                  topRight: Radius.circular(20),
+                  bottomLeft: Radius.circular(20),
+                  bottomRight: Radius.circular(20),
                 ),
               ),
               child: Column(
@@ -134,11 +142,11 @@ class _MetaRow extends StatelessWidget {
           TextButton(
             onPressed: () {
               context.read<ChatBloc>().add(
-                    FeedbackSubmitted(
-                      turnId: turn.id,
-                      feedbackValue: 'not_helpful',
-                    ),
-                  );
+                FeedbackSubmitted(
+                  turnId: turn.id,
+                  feedbackValue: 'not_helpful',
+                ),
+              );
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Thank you for your feedback!')),
@@ -149,11 +157,8 @@ class _MetaRow extends StatelessWidget {
           FilledButton(
             onPressed: () {
               context.read<ChatBloc>().add(
-                    FeedbackSubmitted(
-                      turnId: turn.id,
-                      feedbackValue: 'positive',
-                    ),
-                  );
+                FeedbackSubmitted(turnId: turn.id, feedbackValue: 'positive'),
+              );
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Thank you for your feedback!')),
@@ -184,10 +189,16 @@ class _MetaRow extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.cloud_off_rounded, size: 12, color: c.onOfflineBadge),
+                Icon(
+                  Icons.cloud_off_rounded,
+                  size: 12,
+                  color: c.onOfflineBadge,
+                ),
                 const SizedBox(width: 4),
-                Text('Offline answer',
-                    style: TextStyle(fontSize: 12, color: c.onOfflineBadge)),
+                Text(
+                  'Offline answer',
+                  style: TextStyle(fontSize: 12, color: c.onOfflineBadge),
+                ),
               ],
             ),
           ),
@@ -239,7 +250,10 @@ class _ThinkingIndicatorState extends State<_ThinkingIndicator>
 
   @override
   Widget build(BuildContext context) {
-    final label = Text('Thinking', style: TextStyle(color: widget.color, fontSize: 16));
+    final label = Text(
+      'Thinking',
+      style: TextStyle(color: widget.color, fontSize: 16),
+    );
     if (MediaQuery.of(context).disableAnimations) return label;
     return Semantics(
       label: 'MamaBot is thinking',
@@ -254,7 +268,8 @@ class _ThinkingIndicatorState extends State<_ThinkingIndicator>
               mainAxisSize: MainAxisSize.min,
               children: List.generate(3, (i) {
                 final phase = (_controller.value + i * 0.2) % 1.0;
-                final opacity = 0.25 + 0.75 * math.max(0.0, math.sin(math.pi * phase));
+                final opacity =
+                    0.25 + 0.75 * math.max(0.0, math.sin(math.pi * phase));
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: Opacity(
@@ -262,7 +277,10 @@ class _ThinkingIndicatorState extends State<_ThinkingIndicator>
                     child: Container(
                       width: 7,
                       height: 7,
-                      decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
+                      decoration: BoxDecoration(
+                        color: widget.color,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   ),
                 );

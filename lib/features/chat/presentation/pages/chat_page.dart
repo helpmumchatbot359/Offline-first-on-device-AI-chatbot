@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/mama_background.dart';
 import '../../../../core/widgets/mama_logo.dart';
 import '../../../../core/widgets/theme_toggle_button.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
@@ -23,6 +24,9 @@ class ChatPage extends StatelessWidget {
       // The standard hamburger icon appears automatically because a drawer
       // is attached. Tapping it shows every saved conversation.
       drawer: const _ChatHistoryDrawer(),
+      // A slightly wider "grab area" on the left edge makes the swipe-to-open
+      // gesture feel more forgiving and smoother.
+      drawerEdgeDragWidth: 28,
       onDrawerChanged: (isOpened) {
         // Refresh on every open, whether the person tapped the icon or swiped.
         if (isOpened) {
@@ -37,12 +41,15 @@ class ChatPage extends StatelessWidget {
       body: const SafeArea(
         top: false,
         bottom: false,
-        child: Column(
-          children: [
-            OfflineModelBanner(),
-            Expanded(child: _MessageList()),
-            ChatComposer(),
-          ],
+        // One shared, very subtle gradient instead of a flat black/green page.
+        child: MamaBackground(
+          child: Column(
+            children: [
+              OfflineModelBanner(),
+              Expanded(child: _MessageList()),
+              ChatComposer(),
+            ],
+          ),
         ),
       ),
     );
@@ -56,11 +63,10 @@ class _Title extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.chatColors;
     final scheme = Theme.of(context).colorScheme;
-    // The header is a light surface in both themes, so the status label must
-    // follow the app bar's ink instead of the screen's onSurface colour.
+    // The app bar is neutral in both themes now, so the status label simply
+    // follows the header's normal ink.
     final headerInk =
-        Theme.of(context).appBarTheme.foregroundColor ??
-        scheme.onPrimaryContainer;
+        Theme.of(context).appBarTheme.foregroundColor ?? scheme.onSurface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -75,8 +81,8 @@ class _Title extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 8,
-                height: 8,
+                width: 7,
+                height: 7,
                 decoration: BoxDecoration(
                   color: isOnline ? c.online : c.offline,
                   shape: BoxShape.circle,
@@ -85,9 +91,8 @@ class _Title extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 isOnline ? 'Online' : 'Offline mode',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: headerInk.withValues(alpha: 0.85),
-                ),
+                style: Theme.of(context).textTheme.labelMedium
+                    ?.copyWith(color: headerInk.withValues(alpha: 0.65)),
               ),
             ],
           ),
@@ -205,7 +210,7 @@ class _MessageList extends StatelessWidget {
         // so we never need manual "scroll to bottom" code.
         return ListView.builder(
           reverse: true,
-          padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           itemCount: items.length,
           itemBuilder: (context, index) {
@@ -230,6 +235,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -237,18 +243,24 @@ class _EmptyState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const MamaLogo(size: 72),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             Text(
               'Hello Mum',
-              style: text.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+              style: text.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.3,
+              ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               'Ask me anything about pregnancy, your baby or vaccines.',
               textAlign: TextAlign.center,
-              style: text.bodyLarge,
+              style: text.bodyLarge?.copyWith(
+                color: scheme.onSurfaceVariant,
+                height: 1.45,
+              ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             Wrap(
               alignment: WrapAlignment.center,
               spacing: 8,
@@ -273,6 +285,11 @@ class _EmptyState extends StatelessWidget {
 ///
 /// This is the part that behaves like Gemini / ChatGPT history: starting a new
 /// chat no longer throws the old one away, it simply adds it to this list.
+///
+/// Design notes:
+///  - Square corners and no shadow/border, so the panel melts into the screen.
+///  - Neutral grey selected rows. Only the tiny chat icon turns green.
+///  - No divider lines. Spacing does the separating, which looks calmer.
 class _ChatHistoryDrawer extends StatelessWidget {
   const _ChatHistoryDrawer();
 
@@ -287,56 +304,57 @@ class _ChatHistoryDrawer extends StatelessWidget {
           previous.isGenerating != current.isGenerating,
       builder: (context, state) {
         return Drawer(
+          backgroundColor: scheme.surface,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          shape: const RoundedRectangleBorder(),
           child: SafeArea(
             child: Column(
               children: [
+                _DrawerHeader(scheme: scheme),
+                _NewChatPill(
+                  scheme: scheme,
+                  enabled: !state.isGenerating,
+                  onPressed: () {
+                    // Read the bloc BEFORE closing the drawer, because the
+                    // drawer's context stops working once it is popped.
+                    final bloc = context.read<ChatBloc>();
+                    Navigator.of(context).pop();
+                    bloc.add(const NewChatStarted());
+                  },
+                ),
+                const SizedBox(height: 22),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                  padding: const EdgeInsets.fromLTRB(24, 0, 20, 8),
                   child: Row(
                     children: [
-                      const MamaLogo(size: 30),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Chat history',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                      Text(
+                        'CHATS',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.1,
+                          color: scheme.onSurfaceVariant,
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'Close',
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
+                      const Spacer(),
+                      if (state.sessions.isNotEmpty)
+                        Text(
+                          '${state.sessions.length}',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
                     ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: state.isGenerating
-                          ? null
-                          : () {
-                              // Read the bloc BEFORE closing the drawer,
-                              // because the drawer's context stops working
-                              // once it is popped.
-                              final bloc = context.read<ChatBloc>();
-                              Navigator.of(context).pop();
-                              bloc.add(const NewChatStarted());
-                            },
-                      icon: const Icon(Icons.add_comment_outlined),
-                      label: const Text('New chat'),
-                    ),
-                  ),
-                ),
-                Divider(height: 1, color: scheme.outlineVariant),
                 Expanded(
                   child: state.sessions.isEmpty
                       ? const _EmptyHistory()
                       : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
                           itemCount: state.sessions.length,
                           itemBuilder: (context, index) {
                             final session = state.sessions[index];
@@ -348,20 +366,109 @@ class _ChatHistoryDrawer extends StatelessWidget {
                           },
                         ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
-                  child: Text(
-                    'Your chats are saved on this phone.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall
-                        ?.copyWith(color: scheme.onSurfaceVariant),
-                  ),
-                ),
+                _DrawerFooter(scheme: scheme),
               ],
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class _DrawerHeader extends StatelessWidget {
+  const _DrawerHeader({required this.scheme});
+
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 10, 14),
+      child: Row(
+        children: [
+          const ClipRRect(
+            borderRadius: BorderRadius.all(Radius.circular(8)),
+            child: MamaLogo(size: 28),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'MamaBot',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+                color: scheme.onSurface,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Close',
+            onPressed: () => Navigator.of(context).pop(),
+            icon: Icon(
+              Icons.close_rounded,
+              size: 22,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NewChatPill extends StatelessWidget {
+  const _NewChatPill({
+    required this.scheme,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final ColorScheme scheme;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Opacity(
+        opacity: enabled ? 1 : 0.45,
+        child: SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: Material(
+            color: scheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(16),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: enabled ? onPressed : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.edit_outlined,
+                      size: 20,
+                      color: scheme.onSurface,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'New chat',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -380,12 +487,20 @@ class _EmptyHistory extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.forum_outlined,
-              size: 44,
-              color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainer,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.forum_outlined,
+                size: 28,
+                color: scheme.onSurfaceVariant,
+              ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Text(
               'No saved chats yet',
               style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700),
@@ -398,6 +513,38 @@ class _EmptyHistory extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DrawerFooter extends StatelessWidget {
+  const _DrawerFooter({required this.scheme});
+
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.lock_outline_rounded,
+            size: 13,
+            color: scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              'Your chats are saved on this phone.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: scheme.onSurfaceVariant, fontSize: 11.5),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -446,58 +593,16 @@ class _SessionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final background = selected ? scheme.primaryContainer : Colors.transparent;
-    final foreground = selected ? scheme.onPrimaryContainer : scheme.onSurface;
-    final secondary = selected
-        ? scheme.onPrimaryContainer.withValues(alpha: 0.72)
-        : scheme.onSurfaceVariant;
-
     final messages = session.messageCount;
     final messageLabel = messages == 1 ? 'message' : 'messages';
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 2),
       child: Material(
-        color: background,
+        color: selected ? scheme.surfaceContainerHigh : Colors.transparent,
         borderRadius: BorderRadius.circular(14),
-        child: ListTile(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          contentPadding: const EdgeInsets.only(left: 12, right: 4),
-          leading: Icon(
-            selected
-                ? Icons.chat_bubble_rounded
-                : Icons.chat_bubble_outline_rounded,
-            size: 20,
-            color: selected ? foreground : scheme.onSurfaceVariant,
-          ),
-          title: Text(
-            session.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: foreground,
-            ),
-          ),
-          subtitle: Text(
-            '${_relativeTime(session.updatedAt)} · $messages $messageLabel',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11.5, color: secondary),
-          ),
-          trailing: IconButton(
-            tooltip: 'Delete chat',
-            onPressed: enabled ? () => _confirmDelete(context) : null,
-            icon: Icon(
-              Icons.delete_outline_rounded,
-              size: 20,
-              color: selected
-                  ? foreground.withValues(alpha: 0.8)
-                  : scheme.onSurfaceVariant,
-            ),
-          ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
           onTap: enabled
               ? () {
                   // Grab the bloc before the drawer closes.
@@ -506,6 +611,69 @@ class _SessionTile extends StatelessWidget {
                   bloc.add(ChatOpened(session.id));
                 }
               : null,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 9, 4, 9),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? scheme.primary.withValues(alpha: 0.14)
+                        : scheme.surfaceContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    selected
+                        ? Icons.chat_bubble_rounded
+                        : Icons.chat_bubble_outline_rounded,
+                    size: 18,
+                    color: selected ? scheme.primary : scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        session.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          color: scheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${_relativeTime(session.updatedAt)} · $messages $messageLabel',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Delete chat',
+                  onPressed: enabled ? () => _confirmDelete(context) : null,
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    size: 19,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

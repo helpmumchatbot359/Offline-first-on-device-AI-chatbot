@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import 'core/security/token_storage.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_bloc/theme_bloc.dart';
 import 'core/theme/theme_bloc/theme_event.dart';
 import 'core/theme/theme_bloc/theme_state.dart';
+import 'core/widgets/mama_background.dart';
 import 'core/widgets/mama_logo.dart';
 import 'features/auth/domain/auth_repository.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
@@ -33,7 +35,8 @@ class MamaApp extends StatelessWidget {
 
   final TokenStorage tokenStorage;
   final AuthRepository authRepository;
-  final ChatRepository chatRepository; // was `dynamic`: now the compiler checks it
+  final ChatRepository
+  chatRepository; // was `dynamic`: now the compiler checks it
   final ModelSetupService modelSetupService;
   final SyncService syncService;
   final ThemeMode initialThemeMode;
@@ -43,10 +46,13 @@ class MamaApp extends StatelessWidget {
     return MultiBlocProvider(
       providers: [
         BlocProvider(
-          create: (_) => ThemeBloc(tokenStorage, initialMode: initialThemeMode)
-            ..add(const ThemeLoaded()),
+          create: (_) =>
+              ThemeBloc(tokenStorage, initialMode: initialThemeMode)
+                ..add(const ThemeLoaded()),
         ),
-        BlocProvider(create: (_) => AuthBloc(authRepository)..add(AuthStarted())),
+        BlocProvider(
+          create: (_) => AuthBloc(authRepository)..add(AuthStarted()),
+        ),
       ],
       child: BlocBuilder<ThemeBloc, ThemeState>(
         buildWhen: (p, c) => p.themeMode != c.themeMode,
@@ -56,6 +62,10 @@ class MamaApp extends StatelessWidget {
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
           themeMode: themeState.themeMode,
+          // Light <-> dark now blends instead of snapping. A short, eased
+          // fade feels premium and avoids a harsh flash.
+          themeAnimationDuration: const Duration(milliseconds: 320),
+          themeAnimationCurve: Curves.easeOutCubic,
           home: AuthGate(
             chatRepository: chatRepository,
             modelSetupService: modelSetupService,
@@ -88,13 +98,13 @@ class AuthGate extends StatelessWidget {
         if (s.status == AuthStatus.unauthenticated && message != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(message)),
-            );
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(message)));
           });
         }
       },
-      buildWhen: (p, c) => p.status != c.status, // typing errors must not rebuild the chat
+      buildWhen: (p, c) =>
+          p.status != c.status, // typing errors must not rebuild the chat
       builder: (context, s) {
         switch (s.status) {
           case AuthStatus.unknown:
@@ -106,13 +116,16 @@ class AuthGate extends StatelessWidget {
                           ? SystemUiOverlayStyle.light
                           : SystemUiOverlayStyle.dark)
                       .copyWith(statusBarColor: Colors.transparent),
-              child: const Scaffold(body: Center(child: MamaLogo(size: 110))),
+              child: const Scaffold(
+                body: MamaBackground(child: Center(child: MamaLogo(size: 110))),
+              ),
             );
           case AuthStatus.authenticated:
             return MultiBlocProvider(
               providers: [
                 BlocProvider(
-                  create: (_) => ChatBloc(chatRepository)..add(const ChatStarted()),
+                  create: (_) =>
+                      ChatBloc(chatRepository)..add(const ChatStarted()),
                 ),
                 BlocProvider(
                   create: (_) => OfflineSetupCubit(modelSetupService)..check(),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/widgets/mama_background.dart';
 import '../bloc/auth_bloc.dart';
 import '../events/auth_event.dart';
 import '../states/auth_state.dart';
@@ -108,188 +109,196 @@ class _AuthPageState extends State<AuthPage> {
       appBar: AppBar(
         title: Text(_isSignIn ? 'Welcome Back' : 'Create Account'),
       ),
-      body: BlocConsumer<AuthBloc, AuthState>(
-        listener: (context, state) {
-          if (state.error != null) {
-            ScaffoldMessenger.of(context)
-                .showSnackBar(SnackBar(content: Text(state.error!)));
-          }
-        },
-        builder: (context, state) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 20),
-                  Text(
-                    _isSignIn
-                        ? 'Sign in to continue to MamaBot'
-                        : 'Join MamaBot for personalized health guidance',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: colorScheme.onSurfaceVariant,
+      body: MamaBackground(
+        showGlow: false,
+        child: BlocConsumer<AuthBloc, AuthState>(
+          listener: (context, state) {
+            if (state.error != null) {
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(SnackBar(content: Text(state.error!)));
+            }
+          },
+          builder: (context, state) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 20),
+                    Text(
+                      _isSignIn
+                          ? 'Sign in to continue to MamaBot'
+                          : 'Join MamaBot for personalized health guidance',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 24),
 
-                  // Extra fields for Sign Up only
-                  if (!_isSignIn) ...[
-                    TextFormField(
-                      controller: _usernameController,
-                      decoration: InputDecoration(
-                        label: _buildRequiredLabel('Username', colorScheme),
-                      ),
-                      textCapitalization: TextCapitalization.words,
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Username is required';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedGender,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        label: _buildRequiredLabel('Gender', colorScheme),
-                      ),
-                      hint: Text(
-                        'Select your gender',
-                        style: TextStyle(color: colorScheme.onSurfaceVariant),
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Female',
-                          child: Text('Female'),
+                    // Extra fields for Sign Up only
+                    if (!_isSignIn) ...[
+                      TextFormField(
+                        controller: _usernameController,
+                        decoration: InputDecoration(
+                          label: _buildRequiredLabel('Username', colorScheme),
                         ),
-                        DropdownMenuItem(value: 'Male', child: Text('Male')),
-                      ],
-                      onChanged: (value) {
-                        // No setState needed: the dropdown shows its own
-                        // selection, and this variable is read on submit.
-                        _selectedGender = value;
-                      },
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please select your gender';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
+                        textCapitalization: TextCapitalization.words,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Username is required';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedGender,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          label: _buildRequiredLabel('Gender', colorScheme),
+                        ),
+                        hint: Text(
+                          'Select your gender',
+                          style: TextStyle(color: colorScheme.onSurfaceVariant),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'Female',
+                            child: Text('Female'),
+                          ),
+                          DropdownMenuItem(value: 'Male', child: Text('Male')),
+                        ],
+                        onChanged: (value) {
+                          // No setState needed: the dropdown shows its own
+                          // selection, and this variable is read on submit.
+                          _selectedGender = value;
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please select your gender';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _countryController,
+                        decoration: InputDecoration(
+                          label: _buildRequiredLabel(
+                            'Country (e.g., Nigeria)',
+                            colorScheme,
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Country is required';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Common fields (Email and Password)
                     TextFormField(
-                      controller: _countryController,
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
                       decoration: InputDecoration(
                         label: _buildRequiredLabel(
-                          'Country (e.g., Nigeria)',
+                          'Email Address',
                           colorScheme,
                         ),
                       ),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
-                          return 'Country is required';
+                          return 'Email address is required';
+                        }
+                        if (!_emailRegExp.hasMatch(value.trim())) {
+                          return 'Please enter a valid email address';
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: 16),
-                  ],
-
-                  // Common fields (Email and Password)
-                  TextFormField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      label: _buildRequiredLabel('Email Address', colorScheme),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Email address is required';
-                      }
-                      if (!_emailRegExp.hasMatch(value.trim())) {
-                        return 'Please enter a valid email address';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) {
-                      if (!state.busy) _submit(context);
-                    },
-                    decoration: InputDecoration(
-                      label: _buildRequiredLabel('Password', colorScheme),
-                      // Eye button: shows or hides what was typed.
-                      suffixIcon: IconButton(
-                        tooltip: _obscurePassword
-                            ? 'Show password'
-                            : 'Hide password',
-                        onPressed: () {
-                          setState(() => _obscurePassword = !_obscurePassword);
-                        },
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) {
+                        if (!state.busy) _submit(context);
+                      },
+                      decoration: InputDecoration(
+                        label: _buildRequiredLabel('Password', colorScheme),
+                        // Eye button: shows or hides what was typed.
+                        suffixIcon: IconButton(
+                          tooltip: _obscurePassword
+                              ? 'Show password'
+                              : 'Hide password',
+                          onPressed: () {
+                            setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            );
+                          },
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
                         ),
                       ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Password is required';
+                        }
+                        if (value.trim().length < 6) {
+                          return 'Password must be at least 6 characters long';
+                        }
+                        return null;
+                      },
                     ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Password is required';
-                      }
-                      if (value.trim().length < 6) {
-                        return 'Password must be at least 6 characters long';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 32),
+                    const SizedBox(height: 32),
 
-                  // Submit Button
-                  FilledButton(
-                    onPressed: state.busy ? null : () => _submit(context),
-                    child: state.busy
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(_isSignIn ? 'Sign In' : 'Sign Up'),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Toggle Sign In / Sign Up Mode
-                  TextButton(
-                    onPressed: () {
-                      _formKey.currentState?.reset();
-                      setState(() {
-                        _isSignIn = !_isSignIn;
-                        _selectedGender = null;
-                        _obscurePassword = true;
-                      });
-                    },
-                    child: Text(
-                      _isSignIn
-                          ? "Don't have an account? Sign Up"
-                          : "Already have an account? Sign In",
+                    // Submit Button
+                    FilledButton(
+                      onPressed: state.busy ? null : () => _submit(context),
+                      child: state.busy
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colorScheme.onPrimary,
+                              ),
+                            )
+                          : Text(_isSignIn ? 'Sign In' : 'Sign Up'),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+
+                    // Toggle Sign In / Sign Up Mode
+                    TextButton(
+                      onPressed: () {
+                        _formKey.currentState?.reset();
+                        setState(() {
+                          _isSignIn = !_isSignIn;
+                          _selectedGender = null;
+                          _obscurePassword = true;
+                        });
+                      },
+                      child: Text(
+                        _isSignIn
+                            ? "Don't have an account? Sign Up"
+                            : "Already have an account? Sign In",
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

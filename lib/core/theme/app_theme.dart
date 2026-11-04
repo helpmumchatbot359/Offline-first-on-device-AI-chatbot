@@ -1,20 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// HelpMum Africa brand colours. The whole palette is built around
-/// spring green (#00FA9A), so every shade below is a darker or lighter
-/// version of that same hue.
+/// HelpMum Africa brand colours.
+///
+/// The golden rule for this palette is: **green is an accent, not a
+/// background**. Most of the screen should be neutral (white, grey or
+/// charcoal), exactly like WhatsApp and Gemini. Green is then reserved for
+/// the few places that need to pull the eye: the send button, the online dot,
+/// the selected chat, the primary call-to-action and the user's own bubble.
+///
+/// Why? A fully green screen forces the eye to work hard, because every
+/// surface competes for attention. Neutral surfaces let the green "pop" and
+/// make the app feel calm and professional.
 class MamaColors {
   MamaColors._();
 
-  /// The anchor colour the rest of the palette is derived from.
+  /// The original spring green. Kept for reference/backwards compatibility.
+  /// It is deliberately NOT used as a large surface any more because it is
+  /// very bright (neon) and tiring to look at for long.
   static const springGreen = Color(0xFF00FA9A);
 
-  static const brandGreen = Color(0xFF007A55); // buttons, user bubble (light)
-  static const brandLightGreen = Color(
-    0xFFC9FFE6,
-  ); // app bar, soft surfaces (light)
-  static const brandMint = springGreen; // primary on dark backgrounds
+  /// Deep, calm brand green used for buttons and the light-mode user bubble.
+  static const brandGreen = Color(0xFF0B7A55);
+
+  /// Softer mint used as the accent on dark surfaces. It is easy on the eyes
+  /// but still clearly "MamaBot green".
+  static const brandMint = Color(0xFF34D399);
+
+  /// Very light mint wash for subtle tinted surfaces in light mode.
+  static const brandLightGreen = Color(0xFFE4F6EE);
+
+  /// A darker green for the dark-mode user bubble. White text sits on it
+  /// comfortably, but it does not glow like the old #00FA9A bubble.
+  static const deepGreen = Color(0xFF156B4E);
+
+  /// Cool grey-blue used for a very faint background glow. It stops the
+  /// background from becoming "green everywhere" and adds depth instead.
+  static const slateGlow = Color(0xFF94A3B8);
+
+  /// A darker version of [slateGlow] for the dark theme.
+  static const slateGlowDark = Color(0xFF3A5568);
 }
 
 /// Extra colours for the chat screen that Material's ColorScheme has no slot for.
@@ -113,7 +138,7 @@ class MamaSurfaceColors extends ThemeExtension<MamaSurfaceColors> {
     required this.glassBorder,
   });
 
-  /// Top-to-bottom colour wash used behind the onboarding slides.
+  /// Top-to-bottom colour wash used behind the onboarding slides and chat.
   final List<Color> backgroundGradient;
 
   /// Soft moving light blobs. Three or four colours, drawn as glowing circles.
@@ -177,119 +202,134 @@ class AppTheme {
 
   // `static final` = built once, not on every rebuild.
   static final ThemeData light = _build(
-    scaffold: const Color(0xFFF6FFFA),
+    scaffold: const Color(0xFFF7F8F7),
     scheme: const ColorScheme(
       brightness: Brightness.light,
       primary: MamaColors.brandGreen,
       onPrimary: Color(0xFFFFFFFF),
       primaryContainer: MamaColors.brandLightGreen,
-      onPrimaryContainer: Color(0xFF003826),
-      secondary: Color(0xFF00795C),
+      onPrimaryContainer: Color(0xFF06402D),
+      secondary: Color(0xFF0F766E),
       onSecondary: Color(0xFFFFFFFF),
-      secondaryContainer: Color(0xFFD6FFF0),
-      onSecondaryContainer: Color(0xFF00332A),
-      tertiary: Color(0xFF8A5200),
+      secondaryContainer: Color(0xFFE7F1EF),
+      onSecondaryContainer: Color(0xFF0A3B36),
+      tertiary: Color(0xFF8A5A00),
       onTertiary: Color(0xFFFFFFFF),
       error: Color(0xFFB3261E),
       onError: Color(0xFFFFFFFF),
       surface: Color(0xFFFFFFFF),
-      onSurface: Color(0xFF0E211A),
-      onSurfaceVariant: Color(0xFF43564D),
-      outline: Color(0xFF7FA99A),
-      outlineVariant: Color(0xFFCDEBDD),
+      onSurface: Color(0xFF1A1C1B),
+      onSurfaceVariant: Color(0xFF5F6663),
+      outline: Color(0xFF8A928E),
+      outlineVariant: Color(0xFFE3E8E5),
+      surfaceTint: Color(0x00000000),
+      surfaceContainerLowest: Color(0xFFFFFFFF),
+      surfaceContainerLow: Color(0xFFF7F9F8),
+      surfaceContainer: Color(0xFFF1F4F2),
+      surfaceContainerHigh: Color(0xFFE9EDEA),
+      surfaceContainerHighest: Color(0xFFE1E6E3),
+      inverseSurface: Color(0xFF2F3130),
+      onInverseSurface: Color(0xFFF2F4F3),
+      inversePrimary: Color(0xFF7DD3B8),
+      shadow: Color(0xFF000000),
+      scrim: Color(0xFF000000),
     ),
     chat: const MamaChatColors(
       userBubble: MamaColors.brandGreen,
       onUserBubble: Color(0xFFFFFFFF),
       aiBubble: Color(0xFFFFFFFF),
-      onAiBubble: Color(0xFF0E211A),
-      aiBubbleBorder: Color(0xFFCDEBDD),
-      meta: Color(0xFF557064),
-      offlineBadge: Color(0xFFFFF1D6),
-      onOfflineBadge: Color(0xFF7A4800),
+      onAiBubble: Color(0xFF1A1C1B),
+      aiBubbleBorder: Color(0xFFE3E8E5),
+      meta: Color(0xFF6B7370),
+      offlineBadge: Color(0xFFFFF4DE),
+      onOfflineBadge: Color(0xFF7A4A00),
       errorBubble: Color(0xFFFDECEA),
       onErrorBubble: Color(0xFF8C1D18),
       online: MamaColors.brandGreen,
       offline: Color(0xFFB26A00),
     ),
     brand: const MamaSurfaceColors(
-      // Near-white at the top, ripening into a soft spring-green at the
-      // bottom - the same top-to-bottom flow as Gemini, in our palette.
+      // Starts almost white and only hints at mint near the bottom. The
+      // transition is spread over four stops so it never "jumps" from one
+      // colour to another.
       backgroundGradient: [
-        Color(0xFFFBFFFD),
-        Color(0xFFEAFFF5),
-        Color(0xFFA9FFD4),
+        Color(0xFFF7F8F7),
+        Color(0xFFF4F8F6),
+        Color(0xFFEDF4F0),
+        Color(0xFFE6F0EB),
       ],
-      aurora: [
-        Color(0xFF00FA9A),
-        Color(0xFF7CFFC4),
-        Color(0xFF00D68F),
-      ],
-      ctaGradient: [Color(0xFF006B4A), Color(0xFF00805A)],
+      aurora: [Color(0xFF34D399), Color(0xFF2DD4BF), MamaColors.slateGlow],
+      ctaGradient: [Color(0xFF0B7A55), Color(0xFF0F805C)],
       onCta: Color(0xFFFFFFFF),
       glassFill: Color(0xB8FFFFFF),
-      glassBorder: Color(0xFFC2EEDD),
+      glassBorder: Color(0xFFDCEBE4),
     ),
   );
 
-  // The dark palette starts at true black at the top of the screen and lets a
-  // spring-green glow pool at the bottom. The black keeps every green surface
-  // and bubble crisp instead of turning the screen into green-grey mush.
+  // Dark mode is built from neutral charcoal, not green. The greys below are
+  // very close to Gemini's dark surfaces, which keeps text comfortable and
+  // lets the small green accents stand out.
   static final ThemeData dark = _build(
-    scaffold: const Color(0xFF000000),
+    scaffold: const Color(0xFF0E0F0F),
     scheme: const ColorScheme(
       brightness: Brightness.dark,
-      primary: MamaColors.springGreen,
-      onPrimary: Color(0xFF00281A),
-      primaryContainer: Color(0xFF0C3A29),
-      onPrimaryContainer: Color(0xFF9CFFD2),
-      secondary: Color(0xFF7CFFC4),
-      onSecondary: Color(0xFF00281A),
-      secondaryContainer: Color(0xFF12402F),
-      onSecondaryContainer: Color(0xFFC9FFE6),
-      tertiary: Color(0xFFF5C77E),
-      onTertiary: Color(0xFF3D2800),
-      error: Color(0xFFFFB4AB),
-      onError: Color(0xFF690005),
-      surface: Color(0xFF06100C),
-      onSurface: Color(0xFFE4FFF2),
-      onSurfaceVariant: Color(0xFF9CB8AC),
-      outline: Color(0xFF4F7A6A),
-      outlineVariant: Color(0xFF163127),
+      primary: MamaColors.brandMint,
+      onPrimary: Color(0xFF052E1F),
+      primaryContainer: Color(0xFF123A2C),
+      onPrimaryContainer: Color(0xFFB7F7D8),
+      secondary: Color(0xFF7DD3B8),
+      onSecondary: Color(0xFF04251C),
+      secondaryContainer: Color(0xFF1B2B25),
+      onSecondaryContainer: Color(0xFFD4EDE2),
+      tertiary: Color(0xFFE7C27D),
+      onTertiary: Color(0xFF2B1D00),
+      error: Color(0xFFF2B8B5),
+      onError: Color(0xFF601410),
+      surface: Color(0xFF131314),
+      onSurface: Color(0xFFE6E6E6),
+      onSurfaceVariant: Color(0xFFA8ADAA),
+      outline: Color(0xFF6A706D),
+      outlineVariant: Color(0xFF2B2E2C),
+      surfaceTint: Color(0x00000000),
+      surfaceContainerLowest: Color(0xFF0B0C0C),
+      surfaceContainerLow: Color(0xFF161718),
+      surfaceContainer: Color(0xFF1B1C1D),
+      surfaceContainerHigh: Color(0xFF232425),
+      surfaceContainerHighest: Color(0xFF2C2D2E),
+      inverseSurface: Color(0xFFE6E6E6),
+      onInverseSurface: Color(0xFF131314),
+      inversePrimary: Color(0xFF0B7A55),
+      shadow: Color(0xFF000000),
+      scrim: Color(0xFF000000),
     ),
     chat: const MamaChatColors(
-      userBubble: MamaColors.springGreen,
-      onUserBubble: Color(0xFF00281A),
-      aiBubble: Color(0xFF071310),
-      onAiBubble: Color(0xFFE4FFF2),
-      aiBubbleBorder: Color(0xFF143327),
-      meta: Color(0xFF8FAFA1),
+      userBubble: MamaColors.deepGreen,
+      onUserBubble: Color(0xFFE8FFF5),
+      aiBubble: Color(0xFF1B1C1D),
+      onAiBubble: Color(0xFFE6E6E6),
+      aiBubbleBorder: Color(0xFF2B2E2C),
+      meta: Color(0xFF9AA0A0),
       offlineBadge: Color(0xFF3A2C0F),
       onOfflineBadge: Color(0xFFFFD08A),
       errorBubble: Color(0xFF3A1918),
       onErrorBubble: Color(0xFFFFB4AB),
-      // The status dot sits on the spring-green header in dark mode, so it
-      // needs a dark ink to stay visible (it is light on the light header).
-      online: Color(0xFF00281A),
-      offline: Color(0xFF6B3F00),
+      online: MamaColors.brandMint,
+      offline: Color(0xFFE7C27D),
     ),
     brand: const MamaSurfaceColors(
-      // True black up top, then a green pool of light at the bottom edge.
+      // Nearly black at the top, with only a whisper of green-tinted
+      // charcoal at the bottom. This is the "Gemini glow", but much calmer.
       backgroundGradient: [
-        Color(0xFF000000),
-        Color(0xFF01120B),
-        Color(0xFF004D30),
+        Color(0xFF0E0F0F),
+        Color(0xFF0E100F),
+        Color(0xFF0E1512),
+        Color(0xFF0F1A15),
       ],
-      aurora: [
-        Color(0xFF00FA9A),
-        Color(0xFF7CFFC4),
-        Color(0xFF00C97B),
-        Color(0xFF5CFFC0),
-      ],
-      ctaGradient: [Color(0xFF00FA9A), Color(0xFF7CFFC4)],
-      onCta: Color(0xFF00281A),
+      aurora: [Color(0xFF0E7C58), Color(0xFF146B63), MamaColors.slateGlowDark],
+      ctaGradient: [Color(0xFF0D6449), Color(0xFF107A58)],
+      onCta: Color(0xFFFFFFFF),
       glassFill: Color(0x14FFFFFF),
-      glassBorder: Color(0x2EFFFFFF),
+      glassBorder: Color(0x26FFFFFF),
     ),
   );
 
@@ -300,15 +340,9 @@ class AppTheme {
     required Color scaffold,
   }) {
     final isDark = scheme.brightness == Brightness.dark;
-    // Both headers are light surfaces now: the dark theme uses the same
-    // spring green as the question ribbon, so the status-bar icons must be
-    // dark in both themes. Screens without an app bar (onboarding) override
-    // this with their own AnnotatedRegion.
-    const overlay = SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      statusBarBrightness: Brightness.light,
-    );
+    final overlay =
+        (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+            .copyWith(statusBarColor: Colors.transparent);
     final buttonShape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(14),
     );
@@ -320,50 +354,102 @@ class AppTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: scaffold,
       extensions: <ThemeExtension<dynamic>>[chat, brand],
-      drawerTheme: DrawerThemeData(
-        backgroundColor: scheme.surface,
-        surfaceTintColor: Colors.transparent,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.horizontal(right: Radius.circular(24)),
-        ),
-      ),
+
+      // The header is now a neutral surface in BOTH themes. In light mode it
+      // is the same off-white as the page; in dark mode it is the same
+      // charcoal. No bright green bar across the top.
       appBarTheme: AppBarTheme(
-        // Light mode keeps the soft spring-green bar. Dark mode uses the
-        // exact spring green of the user's question bubble, with the same
-        // dark ink, so the header feels as vivid as the chat ribbon.
-        backgroundColor: isDark ? scheme.primary : scheme.primaryContainer,
-        foregroundColor: isDark ? scheme.onPrimary : scheme.onPrimaryContainer,
+        backgroundColor: scaffold,
+        foregroundColor: scheme.onSurface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
+        titleTextStyle: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.2,
+        ),
+        iconTheme: IconThemeData(color: scheme.onSurface),
+        actionsIconTheme: IconThemeData(color: scheme.onSurface),
         systemOverlayStyle: overlay,
       ),
+
+      // Square, borderless drawer - the Gemini look. The scrim (the dim layer
+      // behind it) fades in/out with the drawer's built-in slide animation.
+      drawerTheme: DrawerThemeData(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        elevation: 0,
+        scrimColor: Colors.black.withValues(alpha: isDark ? 0.58 : 0.30),
+        shape: const RoundedRectangleBorder(),
+        width: 312,
+      ),
+
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: scheme.surface,
+        fillColor: scheme.surfaceContainer,
         hintStyle: TextStyle(color: scheme.onSurfaceVariant),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 18,
-          vertical: 12,
+          vertical: 14,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: scheme.outlineVariant),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: scheme.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide(color: scheme.primary, width: 2),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: scheme.primary, width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: scheme.error),
+        ),
+      ),
+
+      // Suggestion chips are neutral "cards" with a thin border, not green
+      // blobs. This is the same treatment Gemini uses for its suggestion pills.
+      chipTheme: ChipThemeData(
+        backgroundColor: scheme.surfaceContainer,
+        selectedColor: scheme.primaryContainer,
+        disabledColor: scheme.surfaceContainerLow,
+        side: BorderSide(color: scheme.outlineVariant),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        labelStyle: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 13.5,
+          fontWeight: FontWeight.w500,
+        ),
+        secondaryLabelStyle: TextStyle(
+          color: scheme.onSurfaceVariant,
+          fontSize: 13.5,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        showCheckmark: false,
+        elevation: 0,
+        pressElevation: 0,
+      ),
+
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: scheme.primary,
+          textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
+          backgroundColor: scheme.primary,
+          foregroundColor: scheme.onPrimary,
           minimumSize: buttonSize,
           shape: buttonShape,
+          textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -373,18 +459,69 @@ class AppTheme {
           minimumSize: buttonSize,
           shape: buttonShape,
           elevation: 0,
+          textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
+          foregroundColor: scheme.onSurface,
           minimumSize: buttonSize,
           shape: buttonShape,
           side: BorderSide(color: scheme.outline),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
-      dividerTheme: DividerThemeData(color: scheme.outlineVariant),
-      snackBarTheme: const SnackBarThemeData(
+
+      dividerTheme: DividerThemeData(
+        color: scheme.outlineVariant.withValues(alpha: 0.7),
+        thickness: 1,
+        space: 1,
+      ),
+      iconTheme: IconThemeData(color: scheme.onSurfaceVariant),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: scheme.primary,
+        selectionColor: scheme.primary.withValues(alpha: 0.25),
+        selectionHandleColor: scheme.primary,
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: scheme.primary,
+        linearTrackColor: scheme.surfaceContainerHighest,
+      ),
+      snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
+        backgroundColor: scheme.inverseSurface,
+        contentTextStyle: TextStyle(color: scheme.onInverseSurface),
+        actionTextColor: scheme.inversePrimary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        titleTextStyle: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+        ),
+        contentTextStyle: TextStyle(
+          color: scheme.onSurfaceVariant,
+          fontSize: 15,
+          height: 1.45,
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: scheme.surfaceContainer,
+        surfaceTintColor: Colors.transparent,
+        elevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: TextStyle(color: scheme.onSurface),
+      ),
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(
+          color: scheme.inverseSurface,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        textStyle: TextStyle(color: scheme.onInverseSurface, fontSize: 12),
       ),
     );
   }
