@@ -76,6 +76,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/HelpMumLogo.png
+    - assets/images/onboarding/
     - assets/knowledge/knowledge.sqlite3
     - assets/prompts/system_prompt.txt
     - assets/contracts/tool_contract.json

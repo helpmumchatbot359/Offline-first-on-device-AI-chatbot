@@ -1,14 +1,19 @@
-import 'dart:math' as math;
-import 'dart:ui' as ui;
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/mama_logo.dart';
 import '../../../core/widgets/theme_toggle_button.dart';
 import '../../auth/presentation/pages/auth_page.dart';
 
+/// The first screen a new mum sees.
+///
+/// Unlike the rest of the app, onboarding is intentionally a single, rich
+/// colour. A full-bleed emerald backdrop, an editorial photo and a large
+/// bottom headline make the product feel warm and human before the person
+/// has even created an account. Green stays the hero here; inside the app it
+/// goes back to being an accent so long reading sessions remain comfortable.
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key});
 
@@ -19,24 +24,52 @@ class OnboardingPage extends StatefulWidget {
 class _OnboardingPageState extends State<OnboardingPage> {
   final PageController _pageController = PageController();
   int _currentIndex = 0;
+  bool _imagesPrecached = false;
 
-  final List<OnboardingItem> _slides = [
-    const OnboardingItem(
-      title: 'Expert Guidance for Mums',
-      description: 'Get instant, reliable answers about pregnancy, nutrition, and newborn care right from your pocket.',
-      iconData: Icons.favorite_rounded,
+  /// The copy is deliberately short enough to fit over the photo on a small
+  /// phone. Each line break is intentional: it gives the headline the same
+  /// poster-like rhythm as the reference design.
+  static const List<OnboardingItem> _slides = [
+    OnboardingItem(
+      imageAsset: 'assets/images/onboarding/guidance.jpg',
+      eyebrow: 'Expert guidance',
+      iconData: Icons.auto_awesome_rounded,
+      title: 'Expert answers,\nwhenever you\nneed them.',
+      description: 'Trusted advice on pregnancy, nutrition and newborn care.',
+      imageAlignment: Alignment(0, -0.22),
     ),
-    const OnboardingItem(
-      title: 'Works Completely Offline',
-      description: 'No internet? No problem. MamaBot includes an on-device assistant so you can get help anywhere, anytime.',
-      iconData: Icons.cloud_off_rounded,
+    OnboardingItem(
+      imageAsset: 'assets/images/onboarding/offline.jpg',
+      eyebrow: 'Works offline',
+      iconData: Icons.offline_bolt_rounded,
+      title: 'Care that works,\neven when\nyou\'re offline.',
+      description:
+          'On-device answers that keep working when the network doesn\'t.',
+      imageAlignment: Alignment(0, -0.12),
     ),
-    const OnboardingItem(
-      title: 'Track Vaccines & Safety',
-      description: 'Stay on top of critical immunizations and learn to spot early pregnancy warning signs instantly.',
-      iconData: Icons.verified_rounded,
+    OnboardingItem(
+      imageAsset: 'assets/images/onboarding/safety.jpg',
+      eyebrow: 'Vaccines & safety',
+      iconData: Icons.health_and_safety_rounded,
+      title: 'Every milestone,\nsafely on\ntrack.',
+      description:
+          'Vaccination reminders and early warning signs, all in one place.',
+      imageAlignment: Alignment(0, -0.10),
     ),
   ];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Decode the next photos while the person is still reading this one, so
+    // swiping never shows a blank frame.
+    if (_imagesPrecached) return;
+    _imagesPrecached = true;
+    for (final slide in _slides) {
+      unawaited(precacheImage(AssetImage(slide.imageAsset), context));
+    }
+  }
 
   @override
   void dispose() {
@@ -44,7 +77,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
     super.dispose();
   }
 
-  void _navigateToAuth(BuildContext context, {required bool isSignIn}) {
+  void _openAuth({required bool isSignIn}) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => AuthPage(initialSignIn: isSignIn),
@@ -52,160 +85,78 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
   }
 
+  void _continue() {
+    unawaited(HapticFeedback.lightImpact());
+
+    if (_currentIndex < _slides.length - 1) {
+      final reduceMotion =
+          MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+      unawaited(
+        _pageController.nextPage(
+          duration: reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 420),
+          curve: Curves.easeOutCubic,
+        ),
+      );
+      return;
+    }
+
+    // The last slide's call-to-action is the natural start of the account
+    // flow, so it opens Sign Up rather than Sign In.
+    _openAuth(isSignIn: false);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final brand = context.brandColors;
-    final isDark = theme.brightness == Brightness.dark;
-
-    // Spread the gradient evenly across however many colours the theme
-    // supplies. This is what makes the wash "flow" instead of jumping from
-    // one shade to the next.
-    final gradientStops = List<double>.generate(
-      brand.backgroundGradient.length,
-      (i) => i / (brand.backgroundGradient.length - 1),
-    );
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final palette = _Palette(isDark);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      // No AppBar exists here, so the status-bar icons need to be told which
-      // colour to use. White icons in dark mode, dark icons in light mode.
-      value: (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
-          .copyWith(statusBarColor: Colors.transparent),
+      // The page is dark green in both themes, so the status-bar and
+      // navigation-bar icons are always light.
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+        systemStatusBarContrastEnforced: false,
+        systemNavigationBarColor: palette.bottom,
+        systemNavigationBarDividerColor: palette.bottom,
+        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarContrastEnforced: false,
+      ),
       child: Scaffold(
+        backgroundColor: palette.bottom,
         body: Stack(
           children: [
-            // 1) The base colour wash. It is a normal gradient, so it costs
-            //    almost nothing to draw.
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: brand.backgroundGradient,
-                    stops: gradientStops,
-                  ),
-                ),
-              ),
-            ),
-
-            // 2) Slow-moving light blobs on top of the wash. This is the
-            //    "Gemini-like" glow: mostly muted green, with a cool slate
-            //    blob so the screen does not become green everywhere.
-            Positioned.fill(
-              child: _AuroraBackground(colors: brand.aurora, isDark: isDark),
-            ),
-
-            // 3) Everything the person can actually read and tap.
+            Positioned.fill(child: _OnboardingBackdrop(palette: palette)),
             SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+              // Keep large accessibility text useful without letting the
+              // poster headline overflow its photo on small screens.
+              child: MediaQuery.withClampedTextScaling(
+                maxScaleFactor: 1.35,
                 child: Column(
                   children: [
-                    _TopBar(
-                      onSignIn: () => _navigateToAuth(context, isSignIn: true),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 8, 20, 0),
+                      child: _TopBar(onSignIn: () => _openAuth(isSignIn: true)),
                     ),
-                    const SizedBox(height: 8),
-
-                    // Swipeable slides
                     Expanded(
                       child: PageView.builder(
                         controller: _pageController,
                         itemCount: _slides.length,
                         onPageChanged: (index) {
+                          unawaited(HapticFeedback.selectionClick());
                           setState(() => _currentIndex = index);
                         },
-                        itemBuilder: (context, index) {
-                          final slide = _slides[index];
-                          return _SlideView(slide: slide);
-                        },
+                        itemBuilder: (context, index) =>
+                            _SlideView(slide: _slides[index], palette: palette),
                       ),
                     ),
-
-                    // Page indicator dots
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(
-                        _slides.length,
-                        (index) => AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOutCubic,
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          width: _currentIndex == index ? 28 : 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            gradient: _currentIndex == index
-                                ? LinearGradient(
-                                    colors: [
-                                      scheme.primary,
-                                      Color.lerp(
-                                        scheme.primary,
-                                        brand.ctaGradient.last,
-                                        0.55,
-                                      )!,
-                                    ],
-                                  )
-                                : null,
-                            color: _currentIndex == index
-                                ? null
-                                : scheme.outlineVariant,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                      ),
+                    _BottomBar(
+                      count: _slides.length,
+                      currentIndex: _currentIndex,
+                      isLast: _currentIndex == _slides.length - 1,
+                      onContinue: _continue,
                     ),
-                    const SizedBox(height: 28),
-
-                    // Primary action (Next or Get Started)
-                    SizedBox(
-                      width: double.infinity,
-                      child: _GradientButton(
-                        label: _currentIndex == _slides.length - 1
-                            ? 'Get Started'
-                            : 'Next',
-                        onPressed: () {
-                          if (_currentIndex < _slides.length - 1) {
-                            _pageController.nextPage(
-                              duration: const Duration(milliseconds: 350),
-                              curve: Curves.easeOutCubic,
-                            );
-                          } else {
-                            // Final slide: default "Get Started" opens Sign Up.
-                            _navigateToAuth(context, isSignIn: false);
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Secondary action
-                    if (_currentIndex < _slides.length - 1)
-                      TextButton(
-                        onPressed: () {
-                          _pageController.animateToPage(
-                            _slides.length - 1,
-                            duration: const Duration(milliseconds: 350),
-                            curve: Curves.easeOutCubic,
-                          );
-                        },
-                        child: Text(
-                          'Skip',
-                          style: TextStyle(color: scheme.onSurfaceVariant),
-                        ),
-                      )
-                    else
-                      TextButton(
-                        onPressed: () =>
-                            _navigateToAuth(context, isSignIn: true),
-                        child: Text(
-                          'Already have an account? Sign In',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: scheme.primary,
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),
@@ -217,7 +168,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   }
 }
 
-/// Logo on the left, theme switch and "Sign In" on the right.
+/// Logo on the left, theme switch and Sign In on the right.
 class _TopBar extends StatelessWidget {
   const _TopBar({required this.onSignIn});
 
@@ -225,36 +176,178 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
     return Row(
       children: [
-        // The HelpMum logo is already a square tile with its own teal
-        // background, so it never needed a circle around it. Rounded corners
-        // let the whole picture show without clipping anything.
-        const ClipRRect(
-          borderRadius: BorderRadius.all(Radius.circular(10)),
-          child: MamaLogo(size: 38),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          'MamaBot',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.3,
-            color: scheme.onSurface,
+        // A thin white frame makes HelpMum's teal square read as a crisp app
+        // icon instead of a coloured block floating on the green.
+        Container(
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.14),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: const MamaLogo(size: 34),
           ),
         ),
-        const Spacer(),
-        const ThemeToggleButton(),
-        TextButton(
-          onPressed: onSignIn,
+        const SizedBox(width: 10),
+        const Expanded(
           child: Text(
-            'Sign In',
+            'MamaBot',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: scheme.primary,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.4,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        ThemeToggleButton(
+          foregroundColor: Colors.white,
+          backgroundColor: Colors.white.withValues(alpha: 0.12),
+          compact: true,
+        ),
+        const SizedBox(width: 8),
+        _SignInButton(onPressed: onSignIn),
+      ],
+    );
+  }
+}
+
+class _SignInButton extends StatelessWidget {
+  const _SignInButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: Colors.white,
+        // A deep-green tint (instead of white) keeps the small label readable
+        // against the brighter top of the background.
+        backgroundColor: const Color(0xFF033D2B).withValues(alpha: 0.30),
+        minimumSize: const Size(0, 40),
+        padding: const EdgeInsets.symmetric(horizontal: 15),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: StadiumBorder(
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+        ),
+        textStyle: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.1,
+        ),
+      ),
+      child: const Text('Sign in'),
+    );
+  }
+}
+
+/// One full-page slide: the photo behind, the copy sitting on its lower fade.
+class _SlideView extends StatelessWidget {
+  const _SlideView({required this.slide, required this.palette});
+
+  final OnboardingItem slide;
+  final _Palette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _HeroImage(slide: slide, palette: palette),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Spacer(),
+              _SlideCopy(slide: slide),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeroImage extends StatelessWidget {
+  const _HeroImage({required this.slide, required this.palette});
+
+  final OnboardingItem slide;
+  final _Palette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.asset(
+          slide.imageAsset,
+          fit: BoxFit.cover,
+          alignment: slide.imageAlignment,
+          semanticLabel: slide.title.replaceAll('\n', ' '),
+          errorBuilder: (context, error, stackTrace) => ColoredBox(
+            color: palette.mid,
+            child: Center(
+              child: Icon(
+                slide.iconData,
+                size: 88,
+                color: Colors.white.withValues(alpha: 0.38),
+              ),
+            ),
+          ),
+        ),
+
+        // The photo is not placed in a box: its top dissolves into the
+        // header and its bottom into the copy. That soft blend is the trick
+        // that makes the reference design feel like one continuous surface.
+        IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  palette.top.withValues(alpha: 0.92),
+                  palette.top.withValues(alpha: 0.18),
+                  Colors.transparent,
+                  Colors.transparent,
+                  palette.bottom.withValues(alpha: 0.55),
+                  palette.bottom.withValues(alpha: 0.92),
+                  palette.bottom,
+                ],
+                stops: const [0.0, 0.07, 0.18, 0.40, 0.58, 0.80, 1.0],
+              ),
+            ),
+          ),
+        ),
+
+        // A faint vignette adds depth and keeps the eye on the subject.
+        IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0, -0.18),
+                radius: 1.05,
+                colors: [
+                  Colors.transparent,
+                  palette.bottom.withValues(alpha: 0.26),
+                ],
+                stops: const [0.62, 1.0],
+              ),
             ),
           ),
         ),
@@ -263,134 +356,227 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-/// One onboarding slide: a floating glass icon, a title and a description.
-class _SlideView extends StatelessWidget {
-  const _SlideView({required this.slide});
+class _SlideCopy extends StatelessWidget {
+  const _SlideCopy({required this.slide});
 
   final OnboardingItem slide;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final brand = context.brandColors;
-    final isDark = theme.brightness == Brightness.dark;
+    final width = MediaQuery.sizeOf(context).width;
+    final titleSize = (width * 0.095).clamp(30.0, 38.0).toDouble();
 
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 136,
-              height: 136,
-              padding: const EdgeInsets.all(1.5),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    scheme.primary.withValues(alpha: isDark ? 0.55 : 0.45),
-                    brand.glassBorder,
-                  ],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: scheme.primary.withValues(
-                      alpha: isDark ? 0.14 : 0.08,
-                    ),
-                    blurRadius: 36,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: brand.glassFill,
-                ),
-                child: Icon(slide.iconData, size: 60, color: scheme.primary),
-              ),
-            ),
-            const SizedBox(height: 38),
-            Text(
-              slide.title,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 27,
-                height: 1.18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.4,
-                color: scheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                slide.description,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  height: 1.5,
-                  color: scheme.onSurfaceVariant,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(slide.iconData, size: 14, color: const Color(0xFFC9FBE2)),
+              const SizedBox(width: 6),
+              Text(
+                slide.eyebrow.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.1,
+                  color: Color(0xFFE6FFF3),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+        const SizedBox(height: 16),
+        Text(
+          slide.title,
+          style: TextStyle(
+            fontSize: titleSize,
+            height: 1.04,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -1.0,
+            color: Colors.white,
+            shadows: [
+              Shadow(
+                color: Colors.black.withValues(alpha: 0.30),
+                blurRadius: 18,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 332),
+          child: Text(
+            slide.description,
+            style: TextStyle(
+              fontSize: 14.5,
+              height: 1.45,
+              fontWeight: FontWeight.w400,
+              color: Colors.white.withValues(alpha: 0.80),
+              shadows: [
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.28),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Page progress on the left, one clear action on the right.
+class _BottomBar extends StatelessWidget {
+  const _BottomBar({
+    required this.count,
+    required this.currentIndex,
+    required this.isLast,
+    required this.onContinue,
+  });
+
+  final int count;
+  final int currentIndex;
+  final bool isLast;
+  final VoidCallback onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+      child: Row(
+        children: [
+          _PageIndicator(count: count, currentIndex: currentIndex),
+          const Spacer(),
+          AnimatedSize(
+            duration: reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            child: _CtaButton(
+              key: ValueKey(isLast),
+              label: isLast ? 'Get started' : 'Next',
+              onPressed: onContinue,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// A pill-shaped button painted with the theme's green gradient.
-class _GradientButton extends StatelessWidget {
-  const _GradientButton({required this.label, required this.onPressed});
+class _PageIndicator extends StatelessWidget {
+  const _PageIndicator({required this.count, required this.currentIndex});
+
+  final int count;
+  final int currentIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    return Row(
+      children: List.generate(count, (index) {
+        final active = index == currentIndex;
+        return AnimatedContainer(
+          duration: reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.only(right: 7),
+          width: active ? 28 : 7,
+          height: 5,
+          decoration: BoxDecoration(
+            color: active ? Colors.white : Colors.white.withValues(alpha: 0.36),
+            borderRadius: BorderRadius.circular(99),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+/// Soft mint pill with a deep-green label and arrow.
+class _CtaButton extends StatelessWidget {
+  const _CtaButton({super.key, required this.label, required this.onPressed});
 
   final String label;
   final VoidCallback onPressed;
 
+  static const _ink = Color(0xFF033D2B);
+  static const _radius = BorderRadius.all(Radius.circular(999));
+
   @override
   Widget build(BuildContext context) {
-    final brand = context.brandColors;
-    final radius = BorderRadius.circular(18);
-
     return Semantics(
       button: true,
+      label: label,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: radius,
-          gradient: LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: brand.ctaGradient,
+          borderRadius: _radius,
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFD9FFEC), Color(0xFF8DF0C5)],
           ),
           boxShadow: [
             BoxShadow(
-              color: brand.ctaGradient.last.withValues(alpha: 0.22),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
+              color: const Color(0xFF01150E).withValues(alpha: 0.34),
+              blurRadius: 22,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            borderRadius: radius,
+            borderRadius: _radius,
             onTap: onPressed,
-            child: SizedBox(
-              height: 54,
-              child: Center(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: brand.onCta,
-                  ),
+            splashColor: Colors.white.withValues(alpha: 0.30),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 22),
+              child: SizedBox(
+                height: 52,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.1,
+                        color: _ink,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _ink.withValues(alpha: 0.10),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_forward_rounded,
+                        size: 16,
+                        color: _ink,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -401,170 +587,101 @@ class _GradientButton extends StatelessWidget {
   }
 }
 
-/// The animated part of the background.
-///
-/// A [CustomPainter] is used instead of many `Container`s because it draws
-/// directly on one canvas. The [RepaintBoundary] means only this layer is
-/// repainted while the blobs move, not the text and buttons above it.
-class _AuroraBackground extends StatefulWidget {
-  const _AuroraBackground({required this.colors, required this.isDark});
+class _OnboardingBackdrop extends StatelessWidget {
+  const _OnboardingBackdrop({required this.palette});
 
-  final List<Color> colors;
-  final bool isDark;
+  final _Palette palette;
 
   @override
-  State<_AuroraBackground> createState() => _AuroraBackgroundState();
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              // Hold the top colour through the header so the photo's own
+              // top fade lands on exactly the same green, with no seam.
+              colors: [palette.top, palette.top, palette.mid, palette.bottom],
+              stops: const [0.0, 0.18, 0.55, 1.0],
+            ),
+          ),
+        ),
+        Positioned(
+          top: -160,
+          right: -120,
+          child: _Glow(size: 400, color: palette.glow, opacity: 0.22),
+        ),
+        Positioned(
+          bottom: -220,
+          left: -180,
+          child: _Glow(size: 460, color: palette.glow2, opacity: 0.18),
+        ),
+      ],
+    );
+  }
 }
 
-class _AuroraBackgroundState extends State<_AuroraBackground>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 32),
-  );
+class _Glow extends StatelessWidget {
+  const _Glow({required this.size, required this.color, required this.opacity});
 
-  bool _reducedMotion = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller.repeat();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // If the phone's accessibility setting asks for less motion, freeze the
-    // glow in a pleasant position instead of animating it forever.
-    final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    if (reduce == _reducedMotion) return;
-    _reducedMotion = reduce;
-    if (reduce) {
-      _controller
-        ..stop()
-        ..value = 0.35;
-    } else {
-      _controller.repeat();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  final double size;
+  final Color color;
+  final double opacity;
 
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(
-      child: RepaintBoundary(
-        child: CustomPaint(
-          painter: _AuroraPainter(
-            animation: _controller,
-            colors: widget.colors,
-            isDark: widget.isDark,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [
+              color.withValues(alpha: opacity),
+              color.withValues(alpha: 0),
+            ],
           ),
-          isComplex: true,
-          willChange: true,
         ),
       ),
     );
   }
 }
 
-class _AuroraPainter extends CustomPainter {
-  _AuroraPainter({
-    required this.animation,
-    required this.colors,
-    required this.isDark,
-  }) : super(repaint: animation);
+/// Both themes are intentionally green on this screen. Dark mode simply
+/// dims the same composition instead of switching to a white page.
+class _Palette {
+  const _Palette(this.isDark);
 
-  final Animation<double> animation;
-  final List<Color> colors;
   final bool isDark;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (size.isEmpty || colors.isEmpty) return;
-
-    final t = animation.value * math.pi * 2;
-    final w = size.width;
-    final h = size.height;
-    // Much softer than before. The old 0.46/0.34 values painted a bright green
-    // fog over the whole screen. This is a hint of colour, not a wash.
-    final strength = isDark ? 0.20 : 0.13;
-
-    // The light is deliberately anchored to the bottom of the screen, like the
-    // blue pool in Gemini. The top half stays almost pure black (dark mode) or
-    // near-white (light mode), so the green reads as a glow, not a wash.
-    final blobs = <_GlowBlob>[
-      _GlowBlob(
-        center: Offset(
-          w * (0.50 + 0.08 * math.sin(t)),
-          h * (1.02 + 0.01 * math.cos(t)),
-        ),
-        radius: w * 1.18,
-        color: colors[0],
-      ),
-      _GlowBlob(
-        center: Offset(
-          w * (0.10 + 0.08 * math.cos(t * 0.7)),
-          h * (0.95 + 0.02 * math.sin(t * 0.8)),
-        ),
-        radius: w * 0.86,
-        color: colors[1 % colors.length],
-      ),
-      if (colors.length > 2)
-        _GlowBlob(
-          center: Offset(
-            w * (0.92 + 0.06 * math.sin(t * 0.5 + 1.2)),
-            h * (0.98 + 0.02 * math.cos(t * 0.6)),
-          ),
-          radius: w * 0.78,
-          color: colors[2],
-        ),
-    ];
-
-    for (final blob in blobs) {
-      final paint = Paint()
-        ..shader = ui.Gradient.radial(
-          blob.center,
-          blob.radius,
-          [
-            blob.color.withValues(alpha: strength),
-            blob.color.withValues(alpha: 0),
-          ],
-          const [0.0, 1.0],
-        );
-      canvas.drawCircle(blob.center, blob.radius, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _AuroraPainter oldDelegate) =>
-      oldDelegate.colors != colors || oldDelegate.isDark != isDark;
-}
-
-class _GlowBlob {
-  const _GlowBlob({
-    required this.center,
-    required this.radius,
-    required this.color,
-  });
-
-  final Offset center;
-  final double radius;
-  final Color color;
+  Color get top => isDark ? const Color(0xFF064C36) : const Color(0xFF0B8A63);
+  Color get mid => isDark ? const Color(0xFF032D21) : const Color(0xFF066147);
+  Color get bottom =>
+      isDark ? const Color(0xFF01150E) : const Color(0xFF023726);
+  Color get glow => isDark ? const Color(0xFF1FC98D) : const Color(0xFF7BF7C7);
+  Color get glow2 => isDark ? const Color(0xFF0B8C65) : const Color(0xFF34D399);
 }
 
 class OnboardingItem {
   const OnboardingItem({
+    required this.imageAsset,
+    required this.eyebrow,
     required this.title,
     required this.description,
     required this.iconData,
+    required this.imageAlignment,
   });
 
+  final String imageAsset;
+  final String eyebrow;
   final String title;
   final String description;
   final IconData iconData;
+
+  /// Where the photo should be anchored when `BoxFit.cover` crops it.
+  final Alignment imageAlignment;
 }

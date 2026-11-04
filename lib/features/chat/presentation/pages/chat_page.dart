@@ -41,7 +41,6 @@ class ChatPage extends StatelessWidget {
       body: const SafeArea(
         top: false,
         bottom: false,
-        // One shared, very subtle gradient instead of a flat black/green page.
         child: MamaBackground(
           child: Column(
             children: [
@@ -102,13 +101,6 @@ class _Title extends StatelessWidget {
   }
 }
 
-/// The "New chat" button in the top bar.
-///
-/// It is GREYED OUT when pressing it would be pointless or unsafe:
-///  - while history is still loading
-///  - while an answer is being written (the half-written answer would leak
-///    into the new chat)
-///  - when the chat is already empty (nothing to start over from)
 class _NewChatButton extends StatelessWidget {
   const _NewChatButton();
 
@@ -281,15 +273,6 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// The left drawer that lists every conversation saved on this phone.
-///
-/// This is the part that behaves like Gemini / ChatGPT history: starting a new
-/// chat no longer throws the old one away, it simply adds it to this list.
-///
-/// Design notes:
-///  - Square corners and no shadow/border, so the panel melts into the screen.
-///  - Neutral grey selected rows. Only the tiny chat icon turns green.
-///  - No divider lines. Spacing does the separating, which looks calmer.
 class _ChatHistoryDrawer extends StatelessWidget {
   const _ChatHistoryDrawer();
 
