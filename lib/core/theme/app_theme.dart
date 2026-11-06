@@ -42,6 +42,25 @@ class MamaColors {
   static const slateGlowDark = Color(0xFF3A5568);
 }
 
+/// The deep emerald "welcome" palette.
+///
+/// Onboarding and the auth screen are the only two places where green becomes
+/// the whole page instead of just an accent. This class keeps their colours in
+/// one place so the two screens can never slowly drift apart, and so light and
+/// dark mode always move together.
+class MamaHeroColors {
+  const MamaHeroColors({required this.isDark});
+
+  final bool isDark;
+
+  Color get top => isDark ? const Color(0xFF064C36) : const Color(0xFF0B8A63);
+  Color get mid => isDark ? const Color(0xFF032D21) : const Color(0xFF066147);
+  Color get bottom =>
+      isDark ? const Color(0xFF01150E) : const Color(0xFF023726);
+  Color get glow => isDark ? const Color(0xFF1FC98D) : const Color(0xFF7BF7C7);
+  Color get glow2 => isDark ? const Color(0xFF0B8C65) : const Color(0xFF34D399);
+}
+
 /// Extra colours for the chat screen that Material's ColorScheme has no slot for.
 @immutable
 class MamaChatColors extends ThemeExtension<MamaChatColors> {

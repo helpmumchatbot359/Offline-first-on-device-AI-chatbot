@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/mama_logo.dart';
 import '../../../core/widgets/theme_toggle_button.dart';
 import '../../auth/presentation/pages/auth_page.dart';
@@ -110,7 +111,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final palette = _Palette(isDark);
+    final palette = MamaHeroColors(isDark: isDark);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       // The page is dark green in both themes, so the status-bar and
@@ -260,7 +261,7 @@ class _SlideView extends StatelessWidget {
   const _SlideView({required this.slide, required this.palette});
 
   final OnboardingItem slide;
-  final _Palette palette;
+  final MamaHeroColors palette;
 
   @override
   Widget build(BuildContext context) {
@@ -287,7 +288,7 @@ class _HeroImage extends StatelessWidget {
   const _HeroImage({required this.slide, required this.palette});
 
   final OnboardingItem slide;
-  final _Palette palette;
+  final MamaHeroColors palette;
 
   @override
   Widget build(BuildContext context) {
@@ -590,7 +591,7 @@ class _CtaButton extends StatelessWidget {
 class _OnboardingBackdrop extends StatelessWidget {
   const _OnboardingBackdrop({required this.palette});
 
-  final _Palette palette;
+  final MamaHeroColors palette;
 
   @override
   Widget build(BuildContext context) {
@@ -651,21 +652,7 @@ class _Glow extends StatelessWidget {
   }
 }
 
-/// Both themes are intentionally green on this screen. Dark mode simply
-/// dims the same composition instead of switching to a white page.
-class _Palette {
-  const _Palette(this.isDark);
-
-  final bool isDark;
-
-  Color get top => isDark ? const Color(0xFF064C36) : const Color(0xFF0B8A63);
-  Color get mid => isDark ? const Color(0xFF032D21) : const Color(0xFF066147);
-  Color get bottom =>
-      isDark ? const Color(0xFF01150E) : const Color(0xFF023726);
-  Color get glow => isDark ? const Color(0xFF1FC98D) : const Color(0xFF7BF7C7);
-  Color get glow2 => isDark ? const Color(0xFF0B8C65) : const Color(0xFF34D399);
-}
-
+/// One onboarding slide: its photo, copy and the icon used in the eyebrow.
 class OnboardingItem {
   const OnboardingItem({
     required this.imageAsset,

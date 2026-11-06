@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import '../../domain/auth_repository.dart';
 import '../events/auth_event.dart';
 import '../states/auth_state.dart';
@@ -24,9 +26,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   Future<void> _onStarted(AuthStarted event, Emitter<AuthState> emit) async {
     try {
       final hasSession = await _repo.hasSession();
-      emit(state.copyWith(
-        status: hasSession ? AuthStatus.authenticated : AuthStatus.unauthenticated,
-      ));
+      emit(
+        state.copyWith(
+          status: hasSession
+              ? AuthStatus.authenticated
+              : AuthStatus.unauthenticated,
+        ),
+      );
     } catch (_) {
       // If storage fails we must NOT stay on the splash screen forever.
       emit(state.copyWith(status: AuthStatus.unauthenticated));
@@ -44,10 +50,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         country: event.country,
         password: event.password,
       );
-      emit(state.copyWith(
-        status: AuthStatus.unauthenticated,
-        error: 'Sign up successful! Please sign in.',
-      ));
+      // No error message here: the auth screen reacts to `justSignedUp`
+      // by switching to the sign-in tab with a calm success note.
+      emit(
+        state.copyWith(status: AuthStatus.unauthenticated, justSignedUp: true),
+      );
     } on AuthException catch (e) {
       emit(state.copyWith(error: e.message));
     } catch (_) {
@@ -77,16 +84,22 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(const AuthState(status: AuthStatus.unauthenticated));
   }
 
-  Future<void> _onSessionExpired(SessionExpired event, Emitter<AuthState> emit) async {
+  Future<void> _onSessionExpired(
+    SessionExpired event,
+    Emitter<AuthState> emit,
+  ) async {
     // Only matters if someone is actually signed in right now.
     if (state.status != AuthStatus.authenticated) return;
     try {
-      await _repo.signOut(); // tokens are already gone; this resets the chat session
+      await _repo
+          .signOut(); // tokens are already gone; this resets the chat session
     } catch (_) {}
-    emit(const AuthState(
-      status: AuthStatus.unauthenticated,
-      error: 'Your session has expired. Please sign in again.',
-    ));
+    emit(
+      const AuthState(
+        status: AuthStatus.unauthenticated,
+        error: 'Your session has expired. Please sign in again.',
+      ),
+    );
   }
 
   @override

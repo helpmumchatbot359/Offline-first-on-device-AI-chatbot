@@ -174,4 +174,84 @@ void main() {
     expect((metadata['memory'] as Map).containsKey('peak_process_pss_mb'), isFalse);
     expect((metadata['memory'] as Map)['available_mb_at_start'], 1079);
   });
+
+  group('uploads stay under the CloudFront/WAF 8 KB body limit', () {
+    test('telemetry batches are split by real encoded size', () {
+      final events = List.generate(
+        20,
+        (i) => LocalTelemetryEvent(
+          id: i + 1,
+          eventUuid: 'event-$i',
+          eventType: TelemetryContract.offlineInference,
+          chatId: 'chat-$i',
+          date: '2026-11-03T10:00:00.000Z',
+          connectivity: 'offline',
+          metadataJson: jsonEncode({'padding': 'x' * 600}),
+          syncState: 'pending',
+        ),
+      );
+
+      final chunks = SyncService.chunkByJsonSize(
+        events,
+        (batch) => batch.map(SyncService.buildTelemetryPayload).toList(),
+      );
+
+      // Nothing is lost and the original order is kept.
+      expect(
+        chunks.expand((chunk) => chunk).map((e) => e.eventUuid).toList(),
+        events.map((e) => e.eventUuid).toList(),
+      );
+      expect(chunks.length, greaterThan(1));
+
+      for (final chunk in chunks) {
+        final bytes = utf8.encode(
+          jsonEncode(chunk.map(SyncService.buildTelemetryPayload).toList()),
+        ).length;
+        expect(bytes, lessThanOrEqualTo(SyncService.maxUploadBodyBytes));
+      }
+    });
+
+    test('diagnostic chunks keep the cycle id and every record', () {
+      final records = List.generate(
+        30,
+        (i) => {
+          'log_id': 'log-$i',
+          'metrics': {'padding': 'x' * 300},
+        },
+      );
+
+      final chunks = SyncService.chunkByJsonSize(
+        records,
+        (batch) => {'offline_cycle_id': 'cycle-1', 'records': batch},
+      );
+
+      expect(chunks.length, greaterThan(1));
+      expect(
+        chunks.expand((chunk) => chunk).map((r) => r['log_id']).toList(),
+        records.map((r) => r['log_id']).toList(),
+      );
+
+      for (final chunk in chunks) {
+        final body = {'offline_cycle_id': 'cycle-1', 'records': chunk};
+        expect(
+          utf8.encode(jsonEncode(body)).length,
+          lessThanOrEqualTo(SyncService.maxUploadBodyBytes),
+        );
+      }
+    });
+
+    test('one oversized item is sent alone, never silently dropped', () {
+      final chunks = SyncService.chunkByJsonSize(
+        [1, 2, 3],
+        (items) => {'items': items, 'padding': 'x' * 10000},
+        maxBytes: 7000,
+      );
+
+      expect(chunks, [
+        [1],
+        [2],
+        [3],
+      ]);
+    });
+  });
 }

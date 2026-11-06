@@ -1,9 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application>
+    <!-- The app talks to the cloud chat and sync endpoints. INTERNET is required
+         in release builds too (the debug manifest adds it for development only). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- connectivity_plus needs this to read the phone's current network state.
+         Without it Android can report "none" even when Wi-Fi/mobile data is on,
+         which made the app choose the offline model while it was online. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <application
         android:label="mama_ai"
         android:name="${applicationName}"
         android:icon="@android:drawable/sym_def_app_icon"
-        android:roundIcon="@android:drawable/sym_def_app_icon"
+        android:roundIcon="@android:drawable/sym_def_app_icon">
         <activity
             android:name=".MainActivity"
             android:exported="true"

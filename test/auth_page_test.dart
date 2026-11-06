@@ -1,0 +1,162 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mama_ai/core/security/token_storage.dart';
+import 'package:mama_ai/core/theme/app_theme.dart';
+import 'package:mama_ai/core/theme/theme_bloc/theme_bloc.dart';
+import 'package:mama_ai/features/auth/domain/auth_repository.dart';
+import 'package:mama_ai/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:mama_ai/features/auth/presentation/pages/auth_page.dart';
+
+class _FakeAuthRepository implements AuthRepository {
+  @override
+  Future<bool> hasSession() async => false;
+
+  @override
+  Future<void> signIn({
+    required String email,
+    required String password,
+  }) async {}
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  Future<void> signUp({
+    required String username,
+    required String gender,
+    required String email,
+    required String country,
+    required String password,
+  }) async {}
+
+  @override
+  Stream<void> get sessionExpired => const Stream<void>.empty();
+}
+
+void main() {
+  Future<void> pumpAuthPage(
+    WidgetTester tester, {
+    Size size = const Size(360, 640),
+    bool signIn = true,
+    double textScale = 1.0,
+  }) async {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final authBloc = AuthBloc(_FakeAuthRepository());
+    addTearDown(authBloc.close);
+
+    await tester.pumpWidget(
+      MultiBlocProvider(
+        providers: [
+          BlocProvider(create: (_) => ThemeBloc(TokenStorage())),
+          BlocProvider.value(value: authBloc),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
+          // Turning motion off makes the test deterministic and also
+          // exercises the reduced-motion branch of the page.
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              disableAnimations: true,
+              textScaler: TextScaler.linear(textScale),
+            ),
+            child: child!,
+          ),
+          home: AuthPage(initialSignIn: signIn),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('sign-in form fits a small phone', (tester) async {
+    await pumpAuthPage(tester);
+
+    expect(find.text('Welcome back,\nMama.'), findsOneWidget);
+    expect(find.byType(TextFormField), findsNWidgets(2));
+    expect(find.text('Sign in'), findsNWidgets(2)); // tab + button
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('switching to sign up reveals the extra fields', (tester) async {
+    await pumpAuthPage(tester);
+
+    await tester.tap(find.text('Sign up'));
+    await tester.pumpAndSettle();
+
+    expect(find.text("Let's get you\nstarted."), findsOneWidget);
+    expect(find.byType(TextFormField), findsNWidgets(4));
+    expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('empty submit shows inline validation', (tester) async {
+    await pumpAuthPage(tester);
+
+    await tester.ensureVisible(find.text('Sign in').last);
+    await tester.tap(find.text('Sign in').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Email address is required'), findsOneWidget);
+    expect(find.text('Password is required'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a successful sign up flips to sign in with a note', (
+    tester,
+  ) async {
+    await pumpAuthPage(tester);
+
+    await tester.tap(find.text('Sign up'));
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'Ada');
+    await tester.enterText(fields.at(1), 'Nigeria');
+    await tester.enterText(fields.at(2), 'ada@example.com');
+    await tester.enterText(fields.at(3), 'secret123');
+
+    await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Female').last);
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Create account'));
+    await tester.tap(find.text('Create account'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Account created. Sign in to continue.'), findsOneWidget);
+    expect(find.text('Welcome back,\nMama.'), findsOneWidget);
+    expect(find.text('Create account'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('large text and a tablet width do not overflow', (tester) async {
+    await pumpAuthPage(
+      tester,
+      size: const Size(800, 1000),
+      signIn: false,
+      textScale: 1.3,
+    );
+
+    expect(find.text('Create account'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('sign up with large text on a small phone does not overflow', (
+    tester,
+  ) async {
+    await pumpAuthPage(tester, signIn: false, textScale: 1.3);
+
+    expect(find.text('Create account'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+}

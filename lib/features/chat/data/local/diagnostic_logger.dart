@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -8,7 +9,7 @@ import '../telemetry/device_telemetry.dart';
 
 class DiagnosticLogger {
   DiagnosticLogger({DeviceTelemetry? deviceTelemetry})
-      : _deviceTelemetry = deviceTelemetry ?? DeviceTelemetry();
+    : _deviceTelemetry = deviceTelemetry ?? DeviceTelemetry();
 
   /// Reads the phone/runtime facts (model, RAM, memory, PSS, thermal,
   /// battery, CPU/backend). Every diagnostic record gets this block, so the
@@ -22,18 +23,25 @@ class DiagnosticLogger {
 
   int? _peakProcessPssMb;
 
-  String get currentOfflineCycleId => _currentOfflineCycleId ??= 'cycle-${const Uuid().v4()}';
+  String get currentOfflineCycleId =>
+      _currentOfflineCycleId ??= 'cycle-${const Uuid().v4()}';
 
   void startOfflineCycle(String networkType) {
     _currentOfflineCycleId = 'cycle-${const Uuid().v4()}';
     _currentNetworkState = 'no_internet';
     logEvent(
       logType: 'cycle_started',
-      metrics: {'network_type': networkType, 'offline_cycle_id': _currentOfflineCycleId},
+      metrics: {
+        'network_type': networkType,
+        'offline_cycle_id': _currentOfflineCycleId,
+      },
     );
   }
 
-  void endOfflineCycle(String networkState, Map<String, dynamic> summaryMetrics) {
+  void endOfflineCycle(
+    String networkState,
+    Map<String, dynamic> summaryMetrics,
+  ) {
     _currentNetworkState = networkState;
     logEvent(
       logType: 'cycle_ended',
@@ -127,6 +135,83 @@ class DiagnosticLogger {
     }
   }
 
+  /// CloudFront's WAF inspects every JSON body before the request reaches the
+  /// backend. It blocks common attack patterns even when they appear inside
+  /// harmless diagnostic text. That created a loop:
+  ///
+  ///   1. an upload is blocked and returns a 403 HTML page;
+  ///   2. the app saves that HTML (or an error path containing "../") as a
+  ///      diagnostic record;
+  ///   3. the NEXT upload contains that HTML, so the WAF blocks it too.
+  ///
+  /// This keeps the text readable while neutralising the patterns the managed
+  /// rules look for: HTML tags, path traversal, Log4Shell, XSS handlers and
+  /// encoded traversal. It is applied both when a record is written and when
+  /// an older pending file is read, so records from previous builds are fixed
+  /// before they are uploaded.
+  static String sanitizeForWaf(String text) {
+    if (text.isEmpty) return text;
+
+    var out = text
+        .replaceAll('<', '‹')
+        .replaceAll('>', '›')
+        .replaceAll('../', '..⁄')
+        .replaceAll('..\\', '..∖')
+        .replaceAll(r'${', r'$ {')
+        .replaceAll(r'$(', r'$ (')
+        .replaceAll('`', "'");
+
+    out = out.replaceAllMapped(
+      RegExp(r'%2e', caseSensitive: false),
+      (_) => '% 2e',
+    );
+    out = out.replaceAllMapped(
+      RegExp(r'%2f', caseSensitive: false),
+      (_) => '% 2f',
+    );
+    out = out.replaceAllMapped(
+      RegExp(r'%5c', caseSensitive: false),
+      (_) => '% 5c',
+    );
+    out = out.replaceAllMapped(
+      RegExp(r'jndi:', caseSensitive: false),
+      (_) => 'jndi :',
+    );
+    out = out.replaceAllMapped(
+      RegExp(r'javascript:', caseSensitive: false),
+      (_) => 'javascript :',
+    );
+    out = out.replaceAllMapped(
+      RegExp(r'vbscript:', caseSensitive: false),
+      (_) => 'vbscript :',
+    );
+    out = out.replaceAllMapped(
+      RegExp(r'data:text/html', caseSensitive: false),
+      (_) => 'data :text/html',
+    );
+    out = out.replaceAllMapped(
+      RegExp(
+        r'\bon(error|load|click|mouseover|focus|start|message|change|submit)\s*=',
+        caseSensitive: false,
+      ),
+      (m) => 'on_${m[1]}=',
+    );
+    return out;
+  }
+
+  /// Recursively sanitises every string inside [value]. Map keys are left
+  /// alone because the backend relies on their exact names.
+  static Object? _sanitizeValue(Object? value) {
+    if (value is String) return sanitizeForWaf(value);
+    if (value is Map) {
+      return value.map(
+        (key, item) => MapEntry(key.toString(), _sanitizeValue(item)),
+      );
+    }
+    if (value is List) return value.map(_sanitizeValue).toList();
+    return value;
+  }
+
   Future<void> logEvent({
     required String logType,
     required Map<String, dynamic> metrics,
@@ -143,9 +228,12 @@ class DiagnosticLogger {
         'logType': logType,
         'networkState': _currentNetworkState,
         // device + memory + thermal + battery + everything the caller sent.
-        'metrics': enrichedMetrics,
+        'metrics': _sanitizeValue(enrichedMetrics),
       };
-      await file.writeAsString('${jsonEncode(logEntry)}\n', mode: FileMode.append);
+      await file.writeAsString(
+        '${jsonEncode(logEntry)}\n',
+        mode: FileMode.append,
+      );
     } catch (_) {
       // Diagnostic logging must never crash the app.
     }
@@ -194,7 +282,7 @@ class DiagnosticLogger {
   /// converted to the snake_case shape that POST /v1/diagnostic-logs expects.
   /// Returns {cycleId: [record, ...]} and the files that were read.
   Future<({Map<String, List<Map<String, dynamic>>> byCycle, List<File> files})>
-      readPending() async {
+  readPending() async {
     final byCycle = <String, List<Map<String, dynamic>>>{};
     final files = <File>[];
     try {
@@ -212,9 +300,13 @@ class DiagnosticLogger {
               'timestamp': m['timestamp'],
               'log_type': m['logType'],
               'network_state': m['networkState'],
-              'metrics': m['metrics'] ?? <String, dynamic>{},
+              // Old builds may have saved raw HTML/error pages. Sanitise them
+              // here too, otherwise the WAF blocks the whole upload again.
+              'metrics': _sanitizeValue(m['metrics'] ?? <String, dynamic>{}),
             });
-          } catch (_) {/* skip a broken line */}
+          } catch (_) {
+            /* skip a broken line */
+          }
         }
       }
     } catch (_) {}
