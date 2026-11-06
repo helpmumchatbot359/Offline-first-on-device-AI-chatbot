@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
@@ -52,7 +53,8 @@ class AiEvent {
   final Map<String, dynamic> raw;
 
   String get text => (raw['text'] as String?) ?? '';
-  String get error => (raw['error'] as String?) ?? 'The offline assistant failed.';
+  String get error =>
+      (raw['error'] as String?) ?? 'The offline assistant failed.';
   String? get safetyLevel => raw['safety_level'] as String?;
 
   bool get isTerminal =>
@@ -84,8 +86,12 @@ class NativeOfflineAiService {
   }) {
     final key = '$modelPath|$knowledgePath|$runtimePath';
     if (_initializedKey == key) return Future.value();
-    return _initializing ??= _initialize(key, modelPath, knowledgePath, runtimePath)
-        .whenComplete(() => _initializing = null);
+    return _initializing ??= _initialize(
+      key,
+      modelPath,
+      knowledgePath,
+      runtimePath,
+    ).whenComplete(() => _initializing = null);
   }
 
   Future<void> _initialize(
@@ -102,19 +108,29 @@ class NativeOfflineAiService {
       });
       _initializedKey = key;
     } on MissingPluginException {
-      throw const OfflineAiException('The offline assistant is only available on Android.');
+      throw const OfflineAiException(
+        'The offline assistant is only available on Android.',
+      );
     } on PlatformException catch (e) {
       _initializedKey = null;
-      throw OfflineAiException(e.message ?? 'The offline assistant could not start.');
+      throw OfflineAiException(
+        e.message ?? 'The offline assistant could not start.',
+      );
     }
   }
 
   /// Starts one answer and streams its events until it finishes.
+  ///
+  /// [history] contains the earlier turns of this conversation, including turns
+  /// that were answered by the cloud. Android already accepts a `messages`
+  /// array, so sending the history here lets the on-phone model continue the
+  /// same conversation instead of starting with a blank memory.
   Stream<AiEvent> generate({
     required String userId,
     required String sessionId,
     required String chatId,
     required String message,
+    List<Map<String, String>> history = const [],
   }) {
     final requestId = 'req-${const Uuid().v4()}';
     late final StreamController<AiEvent> controller;
@@ -135,7 +151,9 @@ class NativeOfflineAiService {
     void armWatchdog() {
       watchdog?.cancel();
       watchdog = Timer(const Duration(minutes: 6), () {
-        fail(const OfflineAiException('The offline assistant stopped responding.'));
+        fail(
+          const OfflineAiException('The offline assistant stopped responding.'),
+        );
       });
     }
 
@@ -145,11 +163,11 @@ class NativeOfflineAiService {
         subscription = _nativeEvents
             .where((map) => map['request_id'] == requestId)
             .listen((map) {
-          armWatchdog();
-          final event = AiEvent.fromMap(map);
-          if (!controller.isClosed) controller.add(event);
-          if (event.isTerminal) finish();
-        }, onError: fail);
+              armWatchdog();
+              final event = AiEvent.fromMap(map);
+              if (!controller.isClosed) controller.add(event);
+              if (event.isTerminal) finish();
+            }, onError: fail);
         armWatchdog();
         // 2) ...THEN tell Android to start.
         try {
@@ -159,13 +177,24 @@ class NativeOfflineAiService {
             'session_id': sessionId,
             'chat_id': chatId,
             'message': message,
+            // Android uses this list as the conversation memory. The current
+            // question is the last item; `message` above is kept as a fallback
+            // for older native builds.
+            'messages': [
+              ...history,
+              {'role': 'user', 'content': message},
+            ],
             // 'tool_names': <String>[],                          // don't send the 12 KB tool list
             // 'generation_options': {'max_output_tokens': 300}, // shorter answers finish faster. The trade-off is that offline mode won’t run the five tools (pregnancy dates, reminders, saving records, and so on). It will still answer questions using the local knowledge base.
           });
         } on PlatformException catch (e) {
           fail(OfflineAiException(e.message ?? 'Could not start the answer.'));
         } on MissingPluginException {
-          fail(const OfflineAiException('The offline assistant is only available on Android.'));
+          fail(
+            const OfflineAiException(
+              'The offline assistant is only available on Android.',
+            ),
+          );
         }
       },
       onCancel: () async {

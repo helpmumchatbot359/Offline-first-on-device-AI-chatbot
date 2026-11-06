@@ -145,9 +145,7 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
         if (stored.isEmpty()) stored = conversations.load(userId, sessionId);
 
         activeStage = "system_prompt_building";
-        String callerSystem = request.has("system_message")
-                ? request.get("system_message").getAsString() : "";
-        String system = joinSystem(callerSystem, systemPrompt);
+        String system = systemPrompt;
         // The tool provider is created INSIDE the try block below. If its setup
         // fails (for example the contract asset is missing), that problem is
         // reported as a normal "error" event instead of escaping the method.
@@ -330,16 +328,6 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
             closeConversation(conversation);
             if (active != null && active != conversation) closeConversation(active);
         }
-    }
-
-    private static String joinSystem(String... parts) {
-        StringBuilder result = new StringBuilder();
-        for (String part : parts) {
-            if (part == null || part.trim().isEmpty()) continue;
-            if (result.length() > 0) result.append("\n\n");
-            result.append(part.trim());
-        }
-        return result.toString();
     }
 
     public void cancel(String chatId) {

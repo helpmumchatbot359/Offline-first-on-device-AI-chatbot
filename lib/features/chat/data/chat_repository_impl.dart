@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart'; // debugPrint, kDebugMode
 
 import 'ai/native_offline_ai_service.dart';
+import 'ai/chat_context.dart';
 import 'ai/model_setup_service.dart';
 import '../domain/chat_repository.dart';
 import '../domain/chat_session.dart';
@@ -13,6 +14,7 @@ import '../../../core/config/env.dart';
 import '../../../core/security/token_storage.dart';
 import 'local/chat_local_data_source.dart';
 import 'local/diagnostic_logger.dart';
+import 'local/entities/local_chat_entity.dart';
 import 'telemetry/device_telemetry.dart';
 import 'telemetry/telemetry_recorder.dart';
 
@@ -119,6 +121,22 @@ class ChatRepositoryImpl implements ChatRepository {
     final timestamp = DateTime.now().toUtc().toIso8601String();
     final turnId = 'turn-${const Uuid().v4()}';
 
+    // Read the conversation BEFORE saving this new question, so the list is
+    // exactly the earlier turns. The local database is the one place where the
+    // complete conversation lives: online turns are saved here too. Passing it
+    // to the on-phone model lets offline answers remember what was discussed
+    // online (and the other way round).
+    //
+    // The cloud is NOT given this transcript. The backend now stores online and
+    // offline turns under the same chat id, so its own history is complete.
+    var earlierRows = const <LocalChatMessage>[];
+    try {
+      earlierRows = await localDataSource.getMessages(chatId);
+    } catch (e) {
+      debugPrint('Could not load conversation context: $e'); // chat still works
+    }
+    final offlineHistory = ChatContext.offlineMessages(earlierRows);
+
     // Fresh stop switches for THIS answer.
     final stop = Completer<void>();
     final cancelToken = CancelToken();
@@ -218,6 +236,7 @@ class ChatRepositoryImpl implements ChatRepository {
             stop,
             run,
             isOnline: isOnline,
+            history: offlineHistory,
           )) {
             if (event.type == AiEventType.token) {
               aiResponse += event.text;
@@ -558,6 +577,9 @@ class ChatRepositoryImpl implements ChatRepository {
       throw Exception('missing_api_key');
     }
 
+    // The cloud keeps the conversation on its side. The backend stores online
+    // and offline turns under the same chat id, so nothing extra needs to be
+    // injected into the question here.
     Future<Response<dynamic>> send() => apiClient.dio.post(
       '/user/chat',
       data: {'message': text},
@@ -607,6 +629,7 @@ class ChatRepositoryImpl implements ChatRepository {
     Completer<void> stop,
     OfflineRun run, {
     required bool isOnline,
+    List<Map<String, String>> history = const [],
   }) async* {
     await run.envelope.start(); // begin sampling memory/thermal/battery
     run.clock.start(); // latency = from here until the answer ends
@@ -651,6 +674,7 @@ class ChatRepositoryImpl implements ChatRepository {
         sessionId: chatId,
         chatId: chatId,
         message: text,
+        history: history,
       ),
     );
     try {
@@ -760,9 +784,7 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 }
 
-// =============================================================================
 // TELEMETRY helpers (private to this file)
-// =============================================================================
 
 /// Collects REAL measurements while the on-phone model works.
 @visibleForTesting
