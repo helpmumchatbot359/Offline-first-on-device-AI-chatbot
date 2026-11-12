@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/theme/app_theme.dart';
@@ -87,40 +88,44 @@ class _AiBubble extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Flexible(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.sizeOf(context).width * 0.8,
-            ),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(15, 11, 15, 9),
-              decoration: BoxDecoration(
-                color: bg,
-                border: Border.all(color: c.aiBubbleBorder),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(6),
-                  topRight: Radius.circular(20),
-                  bottomLeft: Radius.circular(20),
-                  bottomRight: Radius.circular(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.8,
+                ),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(15, 11, 15, 11),
+                  decoration: BoxDecoration(
+                    color: bg,
+                    border: Border.all(color: c.aiBubbleBorder),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(6),
+                      topRight: Radius.circular(20),
+                      bottomLeft: Radius.circular(20),
+                      bottomRight: Radius.circular(20),
+                    ),
+                  ),
+                  child: waiting
+                      ? _ThinkingIndicator(color: fg)
+                      : SelectableText(
+                          turn.aiResponse,
+                          style: TextStyle(
+                            color: fg,
+                            fontSize: 16,
+                            height: 1.4,
+                          ),
+                        ),
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (waiting)
-                    _ThinkingIndicator(color: fg)
-                  else
-                    SelectableText(
-                      turn.aiResponse,
-                      style: TextStyle(color: fg, fontSize: 16, height: 1.4),
-                    ),
-                  if (!waiting && !turn.isError) ...[
-                    const SizedBox(height: 6),
-                    _MetaRow(turn: turn),
-                  ],
-                ],
-              ),
-            ),
+              if (!waiting && !turn.isError)
+                Padding(
+                  padding: const EdgeInsets.only(left: 2, top: 4),
+                  child: _MetaRow(turn: turn),
+                ),
+            ],
           ),
         ),
       ],
@@ -128,55 +133,48 @@ class _AiBubble extends StatelessWidget {
   }
 }
 
-class _MetaRow extends StatelessWidget {
+/// The quiet row under an answer: offline badge, time, and the same
+/// copy / thumbs actions Gemini shows beneath its replies.
+class _MetaRow extends StatefulWidget {
   const _MetaRow({required this.turn});
   final ChatTurn turn;
 
-  void _showFeedbackDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Rate Offline Answer'),
-        content: const Text('Was this offline response helpful?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              context.read<ChatBloc>().add(
-                FeedbackSubmitted(
-                  turnId: turn.id,
-                  feedbackValue: 'not_helpful',
-                ),
-              );
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Thank you for your feedback!')),
-              );
-            },
-            child: const Text('Not Helpful'),
-          ),
-          FilledButton(
-            onPressed: () {
-              context.read<ChatBloc>().add(
-                FeedbackSubmitted(turnId: turn.id, feedbackValue: 'positive'),
-              );
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Thank you for your feedback!')),
-              );
-            },
-            child: const Text('Helpful'),
-          ),
-        ],
-      ),
+  @override
+  State<_MetaRow> createState() => _MetaRowState();
+}
+
+class _MetaRowState extends State<_MetaRow> {
+  String? _feedback;
+
+  Future<void> _copyAnswer() async {
+    await Clipboard.setData(ClipboardData(text: widget.turn.aiResponse));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Answer copied')));
+  }
+
+  void _sendFeedback(String value) {
+    context.read<ChatBloc>().add(
+      FeedbackSubmitted(turnId: widget.turn.id, feedbackValue: value),
     );
+    setState(() => _feedback = value);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Thanks for your feedback')));
   }
 
   @override
   Widget build(BuildContext context) {
     final c = context.chatColors;
+    final scheme = Theme.of(context).colorScheme;
+    final turn = widget.turn;
     final style = TextStyle(fontSize: 12, color: c.meta);
+    final positive = _feedback == 'positive';
+    final negative = _feedback == 'not_helpful';
+
     return Wrap(
-      spacing: 8,
+      spacing: 6,
+      runSpacing: 2,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         if (turn.isOffline)
@@ -205,14 +203,27 @@ class _MetaRow extends StatelessWidget {
         if (turn.isOffline && turn.synced)
           Icon(Icons.cloud_done_rounded, size: 14, color: c.meta),
         if (!turn.isStreaming) Text(_time(turn.date), style: style),
-        if (turn.isOffline && !turn.isStreaming) ...[
-          const SizedBox(width: 4),
-          InkWell(
-            onTap: () => _showFeedbackDialog(context),
-            child: Padding(
-              padding: const EdgeInsets.all(2.0),
-              child: Icon(Icons.thumb_up_outlined, size: 14, color: c.meta),
-            ),
+        if (!turn.isStreaming) ...[
+          const SizedBox(width: 2),
+          _ActionIcon(
+            tooltip: 'Copy answer',
+            icon: Icons.copy_rounded,
+            color: c.meta,
+            onTap: _copyAnswer,
+          ),
+          _ActionIcon(
+            tooltip: 'Helpful',
+            icon: positive ? Icons.thumb_up_rounded : Icons.thumb_up_outlined,
+            color: positive ? scheme.primary : c.meta,
+            onTap: () => _sendFeedback('positive'),
+          ),
+          _ActionIcon(
+            tooltip: 'Not helpful',
+            icon: negative
+                ? Icons.thumb_down_rounded
+                : Icons.thumb_down_outlined,
+            color: negative ? scheme.error : c.meta,
+            onTap: () => _sendFeedback('not_helpful'),
           ),
         ],
       ],
@@ -223,6 +234,36 @@ class _MetaRow extends StatelessWidget {
     final t = DateTime.tryParse(iso)?.toLocal();
     if (t == null) return '';
     return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+/// A small, low-contrast icon target that still has a comfortable tap area.
+class _ActionIcon extends StatelessWidget {
+  const _ActionIcon({
+    required this.icon,
+    required this.tooltip,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 18,
+        child: Padding(
+          padding: const EdgeInsets.all(5),
+          child: Icon(icon, size: 16, color: color),
+        ),
+      ),
+    );
   }
 }
 

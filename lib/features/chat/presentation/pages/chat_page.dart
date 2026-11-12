@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/theme/app_theme.dart';
@@ -8,6 +9,7 @@ import '../../../../core/widgets/theme_toggle_button.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../auth/presentation/events/auth_event.dart';
 import '../../domain/chat_session.dart';
+import '../../domain/chat_turn.dart';
 import '../bloc/chat_bloc.dart';
 import '../events/chat_event.dart';
 import '../states/chat_state.dart';
@@ -36,7 +38,11 @@ class ChatPage extends StatelessWidget {
       appBar: AppBar(
         titleSpacing: 16,
         title: const _Title(),
-        actions: const [_NewChatButton(), ThemeToggleButton(), _MenuButton()],
+        actions: const [
+          _NewChatButton(),
+          ThemeToggleButton(),
+          _ChatMenuButton(),
+        ],
       ),
       body: const SafeArea(
         top: false,
@@ -144,8 +150,10 @@ class _NewChatButton extends StatelessWidget {
   }
 }
 
-class _MenuButton extends StatelessWidget {
-  const _MenuButton();
+/// One compact menu for the whole conversation. Gemini keeps the history
+/// list clean and moves the per-chat actions here, under the "more" button.
+class _ChatMenuButton extends StatelessWidget {
+  const _ChatMenuButton();
 
   Future<void> _confirmSignOut(BuildContext context) async {
     final ok = await showDialog<bool>(
@@ -171,15 +179,180 @@ class _MenuButton extends StatelessWidget {
     }
   }
 
+  Future<void> _confirmDelete(
+    BuildContext context,
+    String chatId,
+    String title,
+  ) async {
+    final bloc = context.read<ChatBloc>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this chat?'),
+        content: Text(
+          '“$title” and all of its messages will be removed from this phone. '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(88, 44)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok == true) bloc.add(ChatDeleted(chatId));
+  }
+
+  Future<void> _copyConversation(
+    BuildContext context,
+    List<ChatTurn> turns,
+  ) async {
+    final transcript = StringBuffer();
+    for (final turn in turns) {
+      final question = turn.message.trim();
+      final answer = turn.aiResponse.trim();
+      if (question.isNotEmpty) transcript.writeln('You: $question');
+      if (answer.isNotEmpty) transcript.writeln('MamaBot: $answer');
+      transcript.writeln();
+    }
+    if (transcript.isEmpty) return;
+
+    await Clipboard.setData(ClipboardData(text: transcript.toString().trim()));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Conversation copied')));
+  }
+
+  Future<void> _sendFeedback(BuildContext context, ChatTurn turn) async {
+    final bloc = context.read<ChatBloc>();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Send feedback'),
+        content: const Text('Was this conversation helpful?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'not_helpful'),
+            child: const Text('Not helpful'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(88, 44)),
+            onPressed: () => Navigator.pop(ctx, 'positive'),
+            child: const Text('Helpful'),
+          ),
+        ],
+      ),
+    );
+    if (value == null) return;
+
+    bloc.add(FeedbackSubmitted(turnId: turn.id, feedbackValue: value));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Thanks for your feedback')));
+  }
+
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      tooltip: 'More',
-      onSelected: (v) {
-        if (v == 'signout') _confirmSignOut(context);
+    return BlocBuilder<ChatBloc, ChatState>(
+      buildWhen: (previous, current) =>
+          previous.messages != current.messages ||
+          previous.sessions != current.sessions ||
+          previous.activeChatId != current.activeChatId ||
+          previous.isGenerating != current.isGenerating,
+      builder: (context, state) {
+        // The last finished answer is what a conversation-level feedback
+        // rating applies to.
+        ChatTurn? lastAnswer;
+        for (final turn in state.messages) {
+          if (!turn.isStreaming &&
+              !turn.isError &&
+              turn.aiResponse.trim().isNotEmpty) {
+            lastAnswer = turn;
+          }
+        }
+
+        String chatTitle = 'This chat';
+        for (final session in state.sessions) {
+          if (session.id == state.activeChatId) chatTitle = session.title;
+        }
+
+        final hasChat = state.activeChatId != null && state.messages.isNotEmpty;
+
+        return PopupMenuButton<String>(
+          tooltip: 'More options',
+          onSelected: (value) {
+            if (value == 'copy') {
+              _copyConversation(context, state.messages);
+            } else if (value == 'feedback') {
+              if (lastAnswer != null) _sendFeedback(context, lastAnswer);
+            } else if (value == 'delete') {
+              if (state.activeChatId != null) {
+                _confirmDelete(context, state.activeChatId!, chatTitle);
+              }
+            } else if (value == 'signout') {
+              _confirmSignOut(context);
+            }
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'copy',
+              enabled: state.messages.isNotEmpty,
+              child: const _MenuItem(
+                icon: Icons.copy_all_rounded,
+                label: 'Copy conversation',
+              ),
+            ),
+            PopupMenuItem(
+              value: 'feedback',
+              enabled: lastAnswer != null,
+              child: const _MenuItem(
+                icon: Icons.chat_bubble_outline_rounded,
+                label: 'Send feedback',
+              ),
+            ),
+            PopupMenuItem(
+              value: 'delete',
+              enabled: hasChat,
+              child: const _MenuItem(
+                icon: Icons.delete_outline_rounded,
+                label: 'Delete chat',
+              ),
+            ),
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'signout',
+              child: _MenuItem(icon: Icons.logout_rounded, label: 'Sign out'),
+            ),
+          ],
+        );
       },
-      itemBuilder: (_) => const [
-        PopupMenuItem(value: 'signout', child: Text('Sign out')),
+    );
+  }
+}
+
+class _MenuItem extends StatelessWidget {
+  const _MenuItem({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+        const SizedBox(width: 12),
+        Text(label),
       ],
     );
   }
@@ -293,9 +466,10 @@ class _ChatHistoryDrawer extends StatelessWidget {
           shape: const RoundedRectangleBorder(),
           child: SafeArea(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _DrawerHeader(scheme: scheme),
-                _NewChatPill(
+                _NewChatRow(
                   scheme: scheme,
                   enabled: !state.isGenerating,
                   onPressed: () {
@@ -306,31 +480,16 @@ class _ChatHistoryDrawer extends StatelessWidget {
                     bloc.add(const NewChatStarted());
                   },
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 20),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 20, 8),
-                  child: Row(
-                    children: [
-                      Text(
-                        'CHATS',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.1,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (state.sessions.isNotEmpty)
-                        Text(
-                          '${state.sessions.length}',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                    ],
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 6),
+                  child: Text(
+                    'All',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
                 Expanded(
@@ -367,21 +526,16 @@ class _DrawerHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 10, 14),
+      padding: const EdgeInsets.fromLTRB(24, 16, 10, 12),
       child: Row(
         children: [
-          const ClipRRect(
-            borderRadius: BorderRadius.all(Radius.circular(8)),
-            child: MamaLogo(size: 28),
-          ),
-          const SizedBox(width: 10),
           Expanded(
             child: Text(
               'MamaBot',
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: FontWeight.w700,
-                letterSpacing: -0.2,
+                letterSpacing: -0.3,
                 color: scheme.onSurface,
               ),
             ),
@@ -401,8 +555,8 @@ class _DrawerHeader extends StatelessWidget {
   }
 }
 
-class _NewChatPill extends StatelessWidget {
-  const _NewChatPill({
+class _NewChatRow extends StatelessWidget {
+  const _NewChatRow({
     required this.scheme,
     required this.enabled,
     required this.onPressed,
@@ -415,38 +569,30 @@ class _NewChatPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Opacity(
         opacity: enabled ? 1 : 0.45,
-        child: SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: Material(
-            color: scheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(16),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: enabled ? onPressed : null,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.edit_outlined,
-                      size: 20,
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(24),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: enabled ? onPressed : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Icon(Icons.add_rounded, size: 22, color: scheme.onSurface),
+                  const SizedBox(width: 12),
+                  Text(
+                    'New chat',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
                       color: scheme.onSurface,
                     ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'New chat',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: scheme.onSurface,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -546,44 +692,15 @@ class _SessionTile extends StatelessWidget {
   /// Chats cannot be switched while an answer is still being written.
   final bool enabled;
 
-  Future<void> _confirmDelete(BuildContext context) async {
-    final bloc = context.read<ChatBloc>();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete this chat?'),
-        content: Text(
-          '“${session.title}” and all of its messages will be removed from '
-          'this phone. This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(88, 44)),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (ok == true) bloc.add(ChatDeleted(session.id));
-  }
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final messages = session.messageCount;
-    final messageLabel = messages == 1 ? 'message' : 'messages';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Material(
         color: selected ? scheme.surfaceContainerHigh : Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(24),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: enabled
@@ -595,115 +712,20 @@ class _SessionTile extends StatelessWidget {
                 }
               : null,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 9, 4, 9),
-            child: Row(
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? scheme.primary.withValues(alpha: 0.14)
-                        : scheme.surfaceContainer,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    selected
-                        ? Icons.chat_bubble_rounded
-                        : Icons.chat_bubble_outline_rounded,
-                    size: 18,
-                    color: selected ? scheme.primary : scheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        session.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: selected
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                          color: scheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '${_relativeTime(session.updatedAt)} · $messages $messageLabel',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Delete chat',
-                  onPressed: enabled ? () => _confirmDelete(context) : null,
-                  icon: Icon(
-                    Icons.delete_outline_rounded,
-                    size: 19,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            child: Text(
+              session.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: scheme.onSurface,
+              ),
             ),
           ),
         ),
       ),
     );
   }
-}
-
-/// "Today", "Yesterday", "Tue" or "4 Nov 2026" for the history list.
-String _relativeTime(String iso) {
-  final time = DateTime.tryParse(iso)?.toLocal();
-  if (time == null) return '';
-
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  final day = DateTime(time.year, time.month, time.day);
-  final difference = today.difference(day).inDays;
-
-  if (difference == 0) {
-    final hour = time.hour.toString().padLeft(2, '0');
-    final minute = time.minute.toString().padLeft(2, '0');
-    return 'Today $hour:$minute';
-  }
-  if (difference == 1) return 'Yesterday';
-  if (difference > 1 && difference < 7) {
-    return const [
-      'Mon',
-      'Tue',
-      'Wed',
-      'Thu',
-      'Fri',
-      'Sat',
-      'Sun',
-    ][time.weekday - 1];
-  }
-
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  return '${time.day} ${months[time.month - 1]} ${time.year}';
 }

@@ -777,13 +777,8 @@ class _Hero extends StatelessWidget {
     final titleSize = (width * 0.095).clamp(30.0, 38.0).toDouble();
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        _Eyebrow(
-          icon: isSignIn ? Icons.favorite_rounded : Icons.auto_awesome_rounded,
-          label: isSignIn ? 'Welcome back' : 'Join MamaBot',
-        ),
-        const SizedBox(height: 14),
         AnimatedSwitcher(
           duration: duration,
           switchInCurve: Curves.easeOutCubic,
@@ -797,89 +792,62 @@ class _Hero extends StatelessWidget {
               child: child,
             ),
           ),
-          child: Text(
-            isSignIn ? 'Welcome back,\nMama.' : 'Let\'s get you\nstarted.',
+          child: SizedBox(
             key: ValueKey(isSignIn),
-            style: TextStyle(
-              fontSize: titleSize,
-              height: 1.04,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -1.1,
-              color: Colors.white,
-              shadows: [
-                Shadow(
-                  color: Colors.black.withValues(alpha: 0.22),
-                  blurRadius: 18,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 390),
-          child: AnimatedSwitcher(
-            duration: duration,
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
+            width: double.infinity,
             child: Text(
-              isSignIn
-                  ? 'Sign in to pick up your care journey right where you left off.'
-                  : 'Create your account for guidance shaped around you and your baby.',
-              key: ValueKey('subtitle-$isSignIn'),
+              isSignIn ? 'Welcome back,\nMama.' : 'Let\'s get you\nstarted.',
+              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 14.5,
-                height: 1.5,
-                fontWeight: FontWeight.w400,
-                color: Colors.white.withValues(alpha: 0.88),
+                fontSize: titleSize,
+                height: 1.04,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -1.1,
+                color: Colors.white,
                 shadows: [
                   Shadow(
-                    color: Colors.black.withValues(alpha: 0.18),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
+                    color: Colors.black.withValues(alpha: 0.22),
+                    blurRadius: 18,
+                    offset: const Offset(0, 3),
                   ),
                 ],
               ),
             ),
           ),
         ),
-      ],
-    );
-  }
-}
-
-class _Eyebrow extends StatelessWidget {
-  const _Eyebrow({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: const Color(0xFFC9FBE2)),
-          const SizedBox(width: 6),
-          Text(
-            label.toUpperCase(),
-            style: const TextStyle(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
-              color: Color(0xFFE6FFF3),
+        const SizedBox(height: 12),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 390),
+          child: AnimatedSwitcher(
+            duration: duration,
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: SizedBox(
+              key: ValueKey('subtitle-$isSignIn'),
+              width: double.infinity,
+              child: Text(
+                isSignIn
+                    ? 'Sign in to pick up your care journey right where you left off.'
+                    : 'Create your account for guidance shaped around you and your baby.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14.5,
+                  height: 1.5,
+                  fontWeight: FontWeight.w400,
+                  color: Colors.white.withValues(alpha: 0.88),
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.18),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
