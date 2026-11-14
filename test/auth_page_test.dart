@@ -100,6 +100,36 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('every sign-up field has the same vertical gap', (tester) async {
+    await pumpAuthPage(tester);
+
+    await tester.tap(find.text('Sign up'));
+    await tester.pumpAndSettle();
+
+    // Username, Country, Email and Password are TextFormFields; Gender is the
+    // dropdown between Username and Country. Measuring their boxes proves the
+    // Country -> Email gap matches every other pair, including the one that
+    // spans the sign-up block and the outer form column.
+    final username = tester.getRect(find.byType(TextFormField).at(0));
+    final gender = tester.getRect(find.byType(DropdownButtonFormField<String>));
+    final country = tester.getRect(find.byType(TextFormField).at(1));
+    final email = tester.getRect(find.byType(TextFormField).at(2));
+
+    final gaps = <double>[
+      gender.top - username.bottom,
+      country.top - gender.bottom,
+      email.top - country.bottom,
+    ];
+
+    for (final gap in gaps) {
+      expect(
+        gap,
+        moreOrLessEquals(14, epsilon: 0.1),
+        reason: 'Every pair of sign-up fields should be 14 px apart.',
+      );
+    }
+  });
+
   testWidgets('empty submit shows inline validation', (tester) async {
     await pumpAuthPage(tester);
 

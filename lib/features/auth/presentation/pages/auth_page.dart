@@ -45,11 +45,6 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
 
   final _passwordFocus = FocusNode();
 
-  /// Marks the submit button so switching to the taller sign-up form can
-  /// gently scroll it into view instead of leaving it cut off below the fold.
-  final _submitKey = GlobalKey();
-  Timer? _submitRevealTimer;
-
   late bool _isSignIn;
   bool _obscurePassword = true;
   bool _acceptedTerms = false;
@@ -77,6 +72,12 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
   /// A slightly friendlier email check than the original one: it accepts
   /// addresses like `ada+mother@example.co.uk` that people really use.
   static final RegExp _emailRegExp = RegExp(r'^[\w.+-]+@[\w-]+\.[\w.-]+$');
+
+  /// The vertical rhythm between every pair of form fields. Using one
+  /// constant guarantees the gap never goes missing between fields that are
+  /// built in different places (e.g. Country inside the sign-up block and
+  /// Email in the outer column).
+  static const double _fieldSpacing = 14;
 
   @override
   void initState() {
@@ -133,7 +134,6 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _submitRevealTimer?.cancel();
     _entrance.dispose();
     _aurora.dispose();
     _emailController.dispose();
@@ -149,6 +149,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     if (_isSignIn == signIn) return;
     unawaited(HapticFeedback.selectionClick());
 
+    // Keep the form where it is when the mode changes. Jumping to the submit
+    // button hides the signup tabs and first fields on shorter screens.
     setState(() {
       _isSignIn = signIn;
       // A fresh FormState drops the old error text without clearing text.
@@ -156,46 +158,6 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
       _feedback = null;
       _showTermsError = false;
     });
-
-    // Sign-up adds four fields, which pushes "Create account" below the fold.
-    // After the fold-out animation has finished, scroll it up so it sits with
-    // a clear gap above the bottom edge (and above any system navigation bar).
-    if (!signIn) _revealSubmitButton();
-  }
-
-  void _revealSubmitButton() {
-    _submitRevealTimer?.cancel();
-
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-
-    void reveal() {
-      final buttonContext = _submitKey.currentContext;
-      if (!mounted || buttonContext == null) return;
-      Scrollable.ensureVisible(
-        buttonContext,
-        // Put the top of the button at ~82% down the screen, leaving room for
-        // the rest of the button plus a comfortable margin below it. Landing
-        // it exactly at the bottom edge is what made it look cut off.
-        alignment: 0.82,
-        duration: reduceMotion
-            ? Duration.zero
-            : const Duration(milliseconds: 380),
-        curve: Curves.easeOutCubic,
-      );
-    }
-
-    if (reduceMotion) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => reveal());
-    } else {
-      _submitRevealTimer = Timer(
-        // Slightly longer than the 300 ms field fold-out.
-        const Duration(milliseconds: 340),
-        () {
-          if (mounted) reveal();
-        },
-      );
-    }
   }
 
   void _submit(AuthState state) {
@@ -320,38 +282,40 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                         ),
                       ),
                     ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 460),
+                          child: _Reveal(
+                            opacity: _heroReveal,
+                            slide: _heroSlide,
+                            child: _Hero(isSignIn: _isSignIn),
+                          ),
+                        ),
+                      ),
+                    ),
                     Expanded(
                       child: SingleChildScrollView(
                         keyboardDismissBehavior:
                             ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
                         child: Center(
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 460),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _Reveal(
-                                  opacity: _heroReveal,
-                                  slide: _heroSlide,
-                                  child: _Hero(isSignIn: _isSignIn),
-                                ),
-                                const SizedBox(height: 22),
-                                _Reveal(
-                                  opacity: _cardReveal,
-                                  slide: _cardSlide,
-                                  child: BlocConsumer<AuthBloc, AuthState>(
-                                    listenWhen: (previous, current) =>
-                                        previous.error != current.error ||
-                                        previous.justSignedUp !=
-                                            current.justSignedUp,
-                                    listener: (context, state) =>
-                                        _onAuthState(state),
-                                    builder: (context, state) =>
-                                        _buildCard(state, formColors),
-                                  ),
-                                ),
-                              ],
+                            child: _Reveal(
+                              opacity: _cardReveal,
+                              slide: _cardSlide,
+                              child: BlocConsumer<AuthBloc, AuthState>(
+                                listenWhen: (previous, current) =>
+                                    previous.error != current.error ||
+                                    previous.justSignedUp !=
+                                        current.justSignedUp,
+                                listener: (context, state) =>
+                                    _onAuthState(state),
+                                builder: (context, state) =>
+                                    _buildCard(state, formColors),
+                              ),
                             ),
                           ),
                         ),
@@ -441,7 +405,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: _fieldSpacing),
 
                   TextFormField(
                     controller: _passwordController,
@@ -505,20 +469,17 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                   // button, so it is the last thing read before creating the
                   // account. Sign-in does not need it.
                   if (!_isSignIn) ...[
-                    const SizedBox(height: 14),
+                    const SizedBox(height: _fieldSpacing),
                     _buildTermsRow(colors),
                   ],
                   const SizedBox(height: 22),
 
-                  KeyedSubtree(
-                    key: _submitKey,
-                    child: _GradientButton(
-                      label: _isSignIn ? 'Sign in' : 'Create account',
-                      busyLabel: _isSignIn ? 'Signing in' : 'Creating account',
-                      busy: state.busy,
-                      isDark: colors.isDark,
-                      onPressed: () => _submit(state),
-                    ),
+                  _GradientButton(
+                    label: _isSignIn ? 'Sign in' : 'Create account',
+                    busyLabel: _isSignIn ? 'Signing in' : 'Creating account',
+                    busy: state.busy,
+                    isDark: colors.isDark,
+                    onPressed: () => _submit(state),
                   ),
                 ],
               ),
@@ -708,7 +669,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
             return null;
           },
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: _fieldSpacing),
 
         DropdownButtonFormField<String>(
           initialValue: _selectedGender,
@@ -741,7 +702,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
             return null;
           },
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: _fieldSpacing),
 
         TextFormField(
           controller: _countryController,
@@ -765,8 +726,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
           },
         ),
         // Country is the last sign-up field and Email follows in the outer
-        // column, so this spacer keeps the same 14 px rhythm between them.
-        const SizedBox(height: 14),
+        // column, so this spacer keeps the same rhythm between them.
+        const SizedBox(height: _fieldSpacing),
       ],
     );
   }
@@ -995,7 +956,7 @@ class _Hero extends StatelessWidget {
             key: ValueKey(isSignIn),
             width: double.infinity,
             child: Text(
-              isSignIn ? 'Welcome back,\nMama.' : 'Let\'s get you\nstarted.',
+              isSignIn ? 'Welcome back.' : 'Let\'s get you\nstarted.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: titleSize,
