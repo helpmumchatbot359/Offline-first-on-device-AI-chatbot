@@ -26,34 +26,46 @@ class ChatPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      // The standard hamburger icon appears automatically because a drawer
-      // is attached. Tapping it shows every saved conversation.
-      drawer: const _ChatHistoryDrawer(),
-      // A slightly wider "grab area" on the left edge makes the swipe-to-open
-      // gesture feel more forgiving and smoother.
-      drawerEdgeDragWidth: 28,
-      onDrawerChanged: (isOpened) {
-        // Refresh on every open, whether the person tapped the icon or swiped.
-        if (isOpened) {
-          context.read<ChatBloc>().add(const ChatHistoryRequested());
-        }
+    return BlocListener<ChatBloc, ChatState>(
+      listenWhen: (previous, current) =>
+          previous.notice != current.notice && current.notice != null,
+      listener: (context, state) {
+        final notice = state.notice;
+        if (notice == null) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(notice)));
+        context.read<ChatBloc>().add(const ChatNoticeCleared());
       },
-      appBar: AppBar(
-        titleSpacing: 16,
-        title: const _Title(),
-        actions: const [_ChatActions()],
-      ),
-      body: const SafeArea(
-        top: false,
-        bottom: false,
-        child: MamaBackground(
-          child: Column(
-            children: [
-              OfflineModelBanner(),
-              Expanded(child: _MessageList()),
-              ChatComposer(),
-            ],
+      child: Scaffold(
+        // The standard hamburger icon appears automatically because a drawer
+        // is attached. Tapping it shows every saved conversation.
+        drawer: const _ChatHistoryDrawer(),
+        // A slightly wider "grab area" on the left edge makes the swipe-to-open
+        // gesture feel more forgiving and smoother.
+        drawerEdgeDragWidth: 28,
+        onDrawerChanged: (isOpened) {
+          // Refresh on every open, whether the person tapped the icon or swiped.
+          if (isOpened) {
+            context.read<ChatBloc>().add(const ChatHistoryRequested());
+          }
+        },
+        appBar: AppBar(
+          titleSpacing: 16,
+          title: const _Title(),
+          actions: const [_ChatActions()],
+        ),
+        body: const SafeArea(
+          top: false,
+          bottom: false,
+          child: MamaBackground(
+            child: Column(
+              children: [
+                OfflineModelBanner(),
+                Expanded(child: _MessageList()),
+                ChatComposer(),
+              ],
+            ),
           ),
         ),
       ),
@@ -318,7 +330,7 @@ class _ChatMenuButton extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete this chat?'),
         content: Text(
-          '“$title” and all of its messages will be removed from this phone. '
+          '“$title” and all of its messages will be removed from your chat history and this phone. '
           'This cannot be undone.',
         ),
         actions: [
@@ -589,7 +601,10 @@ class _MessageList extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<ChatBloc, ChatState>(
       buildWhen: (p, c) =>
-          p.messages != c.messages || p.isLoading != c.isLoading,
+          p.messages != c.messages ||
+          p.isLoading != c.isLoading ||
+          p.hasMoreMessages != c.hasMoreMessages ||
+          p.isLoadingMoreMessages != c.isLoadingMoreMessages,
       builder: (context, state) {
         if (state.isLoading) return const SizedBox.shrink();
         if (state.messages.isEmpty) return const _EmptyState();
@@ -597,15 +612,37 @@ class _MessageList extends StatelessWidget {
         final items = state.messages;
         // reverse: true keeps the newest message pinned at the bottom,
         // so we never need manual "scroll to bottom" code.
-        return ListView.builder(
-          reverse: true,
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          itemCount: items.length,
-          itemBuilder: (context, index) {
-            final turn = items[items.length - 1 - index];
-            return TurnView(key: ValueKey(turn.id), turn: turn);
+        return NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification.metrics.extentAfter < 120 &&
+                state.hasMoreMessages &&
+                !state.isLoadingMoreMessages) {
+              context.read<ChatBloc>().add(const ChatMessagesMoreRequested());
+            }
+            return false;
           },
+          child: ListView.builder(
+            reverse: true,
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            itemCount: items.length + (state.isLoadingMoreMessages ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index == items.length) {
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                );
+              }
+              final turn = items[items.length - 1 - index];
+              return TurnView(key: ValueKey(turn.id), turn: turn);
+            },
+          ),
         );
       },
     );
@@ -681,6 +718,8 @@ class _ChatHistoryDrawer extends StatelessWidget {
       buildWhen: (previous, current) =>
           previous.sessions != current.sessions ||
           previous.activeChatId != current.activeChatId ||
+          previous.hasMoreSessions != current.hasMoreSessions ||
+          previous.isLoadingMoreSessions != current.isLoadingMoreSessions ||
           previous.isGenerating != current.isGenerating,
       builder: (context, state) {
         return Drawer(
@@ -719,17 +758,45 @@ class _ChatHistoryDrawer extends StatelessWidget {
                 Expanded(
                   child: state.sessions.isEmpty
                       ? const _EmptyHistory()
-                      : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-                          itemCount: state.sessions.length,
-                          itemBuilder: (context, index) {
-                            final session = state.sessions[index];
-                            return _SessionTile(
-                              session: session,
-                              selected: session.id == state.activeChatId,
-                              enabled: !state.isGenerating,
-                            );
+                      : NotificationListener<ScrollNotification>(
+                          onNotification: (notification) {
+                            if (notification.metrics.extentAfter < 120 &&
+                                state.hasMoreSessions &&
+                                !state.isLoadingMoreSessions) {
+                              context.read<ChatBloc>().add(
+                                const ChatHistoryMoreRequested(),
+                              );
+                            }
+                            return false;
                           },
+                          child: ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                            itemCount:
+                                state.sessions.length +
+                                (state.isLoadingMoreSessions ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (index == state.sessions.length) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+                              final session = state.sessions[index];
+                              return _SessionTile(
+                                session: session,
+                                selected: session.id == state.activeChatId,
+                                enabled: !state.isGenerating,
+                              );
+                            },
+                          ),
                         ),
                 ),
                 _DrawerAccount(scheme: scheme),
@@ -991,7 +1058,9 @@ class _SessionTile extends StatelessWidget {
                   // Grab the bloc before the drawer closes.
                   final bloc = context.read<ChatBloc>();
                   Navigator.of(context).pop();
-                  bloc.add(ChatOpened(session.id));
+                  bloc.add(
+                    ChatOpened(session.id, restoreRemote: session.isRemote),
+                  );
                 }
               : null,
           child: Padding(

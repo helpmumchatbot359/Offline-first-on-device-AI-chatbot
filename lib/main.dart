@@ -2,6 +2,7 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 import 'app.dart';
 import 'core/config/env.dart';
 import 'core/network/api_client.dart';
@@ -13,9 +14,10 @@ import 'features/chat/data/ai/native_offline_ai_service.dart';
 import 'features/chat/data/chat_repository_impl.dart';
 import 'features/chat/data/local/chat_local_data_source.dart';
 import 'features/chat/data/local/diagnostic_logger.dart';
+import 'features/chat/data/remote_chat_data_source.dart';
 import 'features/chat/data/sync/sync_service.dart';
 import 'features/chat/data/telemetry/device_telemetry.dart'; // TELEMETRY: device envelope
-import 'features/chat/data/telemetry/telemetry_recorder.dart'; 
+import 'features/chat/data/telemetry/telemetry_recorder.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,37 +68,44 @@ Future<void> main() async {
   final nativeAiService = NativeOfflineAiService();
 
   // 5) Repositories and background sync service dependency injection
-  final authRepository = AuthRepositoryImpl(apiClient, tokenStorage);
+  final authRepository = AuthRepositoryImpl(
+    apiClient,
+    tokenStorage,
+    clearLocalAccountData: localDataSource.clearAccountData,
+  );
   final chatRepository = ChatRepositoryImpl(
     apiClient: apiClient,
     localDataSource: localDataSource,
     tokenStorage: tokenStorage,
     nativeAiService: nativeAiService,
     diagnosticLogger: diagnosticLogger,
-    modelSetupService: modelSetupService, 
-    telemetry: telemetry, 
+    modelSetupService: modelSetupService,
+    telemetry: telemetry,
+    remoteChatDataSource: RemoteChatDataSource(apiClient),
   );
-  
+
   final syncService = SyncService(
     apiClient,
     Connectivity(),
     localDataSource,
     diagnosticLogger,
-    telemetry: telemetry, 
-    tokenStorage: tokenStorage, 
-    modelSetupService: modelSetupService, 
+    telemetry: telemetry,
+    tokenStorage: tokenStorage,
+    modelSetupService: modelSetupService,
   );
   // Upload a freshly created telemetry event immediately (if online).
   // Without this, an event could wait until the next connectivity change.
   telemetry.onEventQueued = syncService.syncAll;
   syncService.startBackgroundSync();
 
-  runApp(MamaApp(
-    tokenStorage: tokenStorage,
-    authRepository: authRepository,
-    chatRepository: chatRepository,
-    modelSetupService: modelSetupService,
-    syncService: syncService,
-    initialThemeMode: savedTheme,
-  ));
+  runApp(
+    MamaApp(
+      tokenStorage: tokenStorage,
+      authRepository: authRepository,
+      chatRepository: chatRepository,
+      modelSetupService: modelSetupService,
+      syncService: syncService,
+      initialThemeMode: savedTheme,
+    ),
+  );
 }

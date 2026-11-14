@@ -5,14 +5,26 @@ abstract class ChatRepository {
   /// Everything saved for the chat that is open.
   Future<List<ChatTurn>> loadHistory();
 
-  /// The conversations saved on this phone, newest first.
-  Future<List<ChatSession>> loadChatSessions();
+  /// The next page of local and server conversations, newest first.
+  Future<ChatSessionsPage> loadChatSessions({
+    int skip = 0,
+    bool includeRemote = true,
+  });
 
   /// Which conversation is currently open.
   Future<String> activeChatId();
 
   /// Makes an old conversation the open one again.
-  Future<void> openChat(String chatId);
+  Future<ChatMessageHistoryPage> openChat(
+    String chatId, {
+    bool restoreRemote = false,
+  });
+
+  /// Loads the next older server page and stores it in local history.
+  Future<ChatMessageHistoryPage> loadOlderMessages(
+    String chatId, {
+    required int skip,
+  });
 
   /// Removes one conversation and all of its messages.
   Future<void> deleteChat(String chatId);

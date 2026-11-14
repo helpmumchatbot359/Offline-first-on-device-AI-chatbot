@@ -22,6 +22,9 @@ abstract class AuthRepository {
   Future<void> signIn({required String email, required String password});
   Future<void> signOut();
 
+  /// Permanently deletes the signed-in account and clears its on-device data.
+  Future<void> deleteAccount();
+
   /// Fires when the long (30-day) login is over and the person must sign in again.
   Stream<void> get sessionExpired;
 }

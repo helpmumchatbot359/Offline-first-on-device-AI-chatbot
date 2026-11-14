@@ -26,6 +26,9 @@ class _FakeAuthRepository implements AuthRepository {
   Future<void> signOut() async {}
 
   @override
+  Future<void> deleteAccount() async {}
+
+  @override
   Future<void> signUp({
     required String username,
     required String gender,
@@ -81,7 +84,7 @@ void main() {
   testWidgets('sign-in form fits a small phone', (tester) async {
     await pumpAuthPage(tester);
 
-    expect(find.text('Welcome back,\nMama.'), findsOneWidget);
+    expect(find.text('Welcome back.'), findsOneWidget);
     expect(find.byType(TextFormField), findsNWidgets(2));
     expect(find.text('Sign in'), findsNWidgets(2)); // tab + button
     expect(tester.takeException(), isNull);
@@ -172,7 +175,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Account created. Sign in to continue.'), findsOneWidget);
-    expect(find.text('Welcome back,\nMama.'), findsOneWidget);
+    expect(find.text('Welcome back.'), findsOneWidget);
     expect(find.text('Create account'), findsNothing);
     expect(tester.takeException(), isNull);
   });

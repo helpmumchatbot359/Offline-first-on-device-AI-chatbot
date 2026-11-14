@@ -31,5 +31,7 @@ class SignInSubmitted extends AuthEvent {
 
 class SignedOut extends AuthEvent {}
 
+class AccountDeletionRequested extends AuthEvent {}
+
 /// Internal: the server refused to renew the login (30 days are over, or it was revoked).
 class SessionExpired extends AuthEvent {}

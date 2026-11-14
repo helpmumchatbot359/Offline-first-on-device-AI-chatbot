@@ -15,6 +15,7 @@ import '../../../core/security/token_storage.dart';
 import 'local/chat_local_data_source.dart';
 import 'local/diagnostic_logger.dart';
 import 'local/entities/local_chat_entity.dart';
+import 'remote_chat_data_source.dart';
 import 'telemetry/device_telemetry.dart';
 import 'telemetry/telemetry_recorder.dart';
 
@@ -29,6 +30,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required this.diagnosticLogger,
     required this.modelSetupService,
     required this.telemetry,
+    required this.remoteChatDataSource,
   });
 
   final ApiClient apiClient;
@@ -38,6 +40,7 @@ class ChatRepositoryImpl implements ChatRepository {
   final DiagnosticLogger diagnosticLogger;
   final ModelSetupService modelSetupService;
   final TelemetryRecorder telemetry;
+  final RemoteChatDataSource remoteChatDataSource;
 
   static const _recordCloudFallbackAsOffline = true;
 
@@ -68,7 +71,10 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<List<ChatSession>> loadChatSessions() async {
+  Future<ChatSessionsPage> loadChatSessions({
+    int skip = 0,
+    bool includeRemote = true,
+  }) async {
     final chats = await localDataSource.getChats();
     Map<String, String> customTitles = const {};
     try {
@@ -95,17 +101,128 @@ class ChatRepositoryImpl implements ChatRepository {
         ),
       );
     }
-    return sessions;
+    // Local ObjectBox history keeps working offline. A signed-in account also
+    // receives one server page at a time, so remote history survives a reinstall
+    // without downloading every page before the drawer can open.
+    if (includeRemote && await apiClient.isSignedIn()) {
+      try {
+        final page = await remoteChatDataSource.listChats(skip: skip);
+        final remote = <String, ChatSession>{};
+        for (final chat in page.chats) {
+          final custom = customTitles[chat.id]?.trim();
+          remote[chat.id] = ChatSession(
+            id: chat.id,
+            title: (custom != null && custom.isNotEmpty)
+                ? _shortTitle(custom, limit: 80)
+                : _remoteChatTitle(chat.lastMessageAt),
+            updatedAt: chat.lastMessageAt,
+            messageCount: chat.messageCount,
+            isRemote: true,
+          );
+        }
+
+        final merged = <String, ChatSession>{
+          for (final session in remote.values) session.id: session,
+          for (final session in sessions)
+            session.id: _mergeChatSession(remote[session.id], session),
+        };
+        final all = merged.values.toList()
+          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        return ChatSessionsPage(
+          sessions: all,
+          hasMore: page.hasMore,
+          nextSkip: page.nextSkip,
+        );
+      } catch (_) {
+        // An outage or an older backend must not prevent on-device history
+        // from appearing. The next drawer refresh will try the server again.
+      }
+    }
+
+    return ChatSessionsPage(sessions: sessions, hasMore: false, nextSkip: skip);
   }
 
   @override
   Future<String> activeChatId() => tokenStorage.activeChatId();
 
   @override
-  Future<void> openChat(String chatId) => tokenStorage.setActiveChat(chatId);
+  Future<ChatMessageHistoryPage> openChat(
+    String chatId, {
+    bool restoreRemote = false,
+  }) async {
+    var page = const ChatMessageHistoryPage.empty();
+    // Only a chat selected from the server history list is restored. New
+    // phone-created chats retain the current local/offline path.
+    if (restoreRemote && await apiClient.isSignedIn()) {
+      try {
+        final remotePage = await remoteChatDataSource.getMessages(
+          chatId,
+          skip: 0,
+        );
+        await localDataSource.mergeRemoteMessages(
+          chatId: chatId,
+          messages: [
+            for (final message in remotePage.messages)
+              (
+                message: message.message,
+                aiResponse: message.aiResponse,
+                date: message.date,
+              ),
+          ],
+        );
+        page = ChatMessageHistoryPage(
+          hasMore: remotePage.hasMore,
+          nextSkip: remotePage.nextSkip,
+        );
+      } catch (_) {
+        // A remote failure must not hide a previously downloaded local copy.
+        if (await localDataSource.countMessages(chatId) == 0) rethrow;
+      }
+    }
+
+    await tokenStorage.setActiveChat(chatId);
+    return page;
+  }
+
+  @override
+  Future<ChatMessageHistoryPage> loadOlderMessages(
+    String chatId, {
+    required int skip,
+  }) async {
+    final remotePage = await remoteChatDataSource.getMessages(
+      chatId,
+      skip: skip,
+    );
+    await localDataSource.mergeRemoteMessages(
+      chatId: chatId,
+      messages: [
+        for (final message in remotePage.messages)
+          (
+            message: message.message,
+            aiResponse: message.aiResponse,
+            date: message.date,
+          ),
+      ],
+    );
+    return ChatMessageHistoryPage(
+      hasMore: remotePage.hasMore,
+      nextSkip: remotePage.nextSkip,
+    );
+  }
 
   @override
   Future<void> deleteChat(String chatId) async {
+    if (await apiClient.isSignedIn()) {
+      try {
+        await remoteChatDataSource.deleteChat(chatId);
+      } on DioException catch (error) {
+        // A local-only/offline chat has no server record to delete yet.
+        // All other failures keep the local copy so the UI does not pretend
+        // that a server-side deletion succeeded.
+        if (error.response?.statusCode != 404) rethrow;
+      }
+    }
+
     await localDataSource.deleteChat(chatId);
     await tokenStorage.deleteChatTitle(chatId);
 
@@ -153,6 +270,41 @@ class ChatRepositoryImpl implements ChatRepository {
     if (clean.isEmpty) return 'New chat';
     if (clean.length <= limit) return clean;
     return '${clean.substring(0, limit).trimRight()}…';
+  }
+
+  static ChatSession _mergeChatSession(ChatSession? remote, ChatSession local) {
+    if (remote == null) return local;
+    return ChatSession(
+      id: local.id,
+      title: local.title.isNotEmpty ? local.title : remote.title,
+      updatedAt: local.updatedAt.compareTo(remote.updatedAt) >= 0
+          ? local.updatedAt
+          : remote.updatedAt,
+      messageCount: local.messageCount > remote.messageCount
+          ? local.messageCount
+          : remote.messageCount,
+      isRemote: remote.isRemote || local.isRemote,
+    );
+  }
+
+  static String _remoteChatTitle(String timestamp) {
+    final parsed = DateTime.tryParse(timestamp)?.toLocal();
+    if (parsed == null) return 'Saved chat';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return 'Chat · ${months[parsed.month - 1]} ${parsed.day}';
   }
 
   @override

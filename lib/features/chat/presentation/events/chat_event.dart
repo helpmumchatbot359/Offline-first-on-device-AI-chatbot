@@ -32,12 +32,23 @@ class ChatHistoryRequested extends ChatEvent {
   const ChatHistoryRequested();
 }
 
+/// The history drawer is near its bottom: request the next server page.
+class ChatHistoryMoreRequested extends ChatEvent {
+  const ChatHistoryMoreRequested();
+}
+
+/// The person scrolled to the oldest currently loaded message in a restored chat.
+class ChatMessagesMoreRequested extends ChatEvent {
+  const ChatMessagesMoreRequested();
+}
+
 /// The person picked an old conversation from the history drawer.
 class ChatOpened extends ChatEvent {
-  const ChatOpened(this.chatId);
+  const ChatOpened(this.chatId, {this.restoreRemote = false});
   final String chatId;
+  final bool restoreRemote;
   @override
-  List<Object?> get props => [chatId];
+  List<Object?> get props => [chatId, restoreRemote];
 }
 
 /// The person deleted a conversation from the history drawer.
@@ -46,6 +57,11 @@ class ChatDeleted extends ChatEvent {
   final String chatId;
   @override
   List<Object?> get props => [chatId];
+}
+
+/// Internal: clear a one-time chat action message after it is shown.
+class ChatNoticeCleared extends ChatEvent {
+  const ChatNoticeCleared();
 }
 
 /// The person gave a conversation a name from the three-dot menu.

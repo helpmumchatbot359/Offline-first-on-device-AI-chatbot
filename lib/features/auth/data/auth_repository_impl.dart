@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
@@ -8,9 +9,14 @@ import '../domain/auth_repository.dart';
 import '../domain/user_profile.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
-  AuthRepositoryImpl(this._apiClient, this._tokenStorage);
+  AuthRepositoryImpl(
+    this._apiClient,
+    this._tokenStorage, {
+    this._clearLocalAccountData,
+  });
   final ApiClient _apiClient;
   final TokenStorage _tokenStorage;
+  final Future<void> Function()? _clearLocalAccountData;
 
   @override
   Stream<void> get sessionExpired => _apiClient.sessionExpired;
@@ -90,6 +96,65 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<void> signOut() async {
     await _tokenStorage.clearSession(); // JWT + saved email/password
     await _tokenStorage.resetChatSession();
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    final token = await _tokenStorage.readToken();
+    if (token == null || token.isEmpty) {
+      throw AuthException('Please sign in again before deleting your account.');
+    }
+    final appUserId = _appUserIdFromToken(token);
+
+    try {
+      // The current backend route still expects the account ID in the path.
+      // The same JWT is attached by ApiClient and remains the authorization.
+      await _apiClient.dio.delete<dynamic>(
+        '/user/${Uri.encodeComponent(appUserId)}',
+      );
+    } on DioException catch (e) {
+      throw AuthException(
+        _messageFrom(e, 'Could not delete your account. Please try again.'),
+      );
+    }
+
+    // Only erase local conversations after the server confirms deletion.
+    try {
+      await _clearLocalAccountData?.call();
+    } finally {
+      await _tokenStorage.clearAccountData();
+    }
+  }
+
+  /// Reads the numeric account ID from the JWT's `sub` claim for the current
+  /// backend route. The server must still validate the JWT and authorize that
+  /// the path ID belongs to it; client-side decoding is not verification.
+  static String _appUserIdFromToken(String token) {
+    final parts = token.split('.');
+    if (parts.length != 3) {
+      throw AuthException(
+        'Could not read your account ID. Please sign in again.',
+      );
+    }
+
+    try {
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      );
+      final subject = payload is Map ? payload['sub']?.toString().trim() : null;
+      if (subject == null || !RegExp(r'^\d+$').hasMatch(subject)) {
+        throw AuthException(
+          'Could not read your account ID. Please sign in again.',
+        );
+      }
+      return subject;
+    } on AuthException {
+      rethrow;
+    } catch (_) {
+      throw AuthException(
+        'Could not read your account ID. Please sign in again.',
+      );
+    }
   }
 
   /// Turns `ada.lovelace+mother@example.com` into `Ada Lovelace Mother`.

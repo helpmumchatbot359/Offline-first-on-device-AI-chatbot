@@ -11,6 +11,13 @@ class ChatState extends Equatable {
     this.isGenerating = false,
     this.isOnline = true,
     this.isLoading = true,
+    this.hasMoreSessions = false,
+    this.isLoadingMoreSessions = false,
+    this.nextSessionSkip = 0,
+    this.hasMoreMessages = false,
+    this.isLoadingMoreMessages = false,
+    this.nextMessageSkip = 0,
+    this.notice,
   });
 
   final List<ChatTurn> messages;
@@ -24,6 +31,15 @@ class ChatState extends Equatable {
   final bool isGenerating;
   final bool isOnline;
   final bool isLoading; // reading saved history
+  final bool hasMoreSessions;
+  final bool isLoadingMoreSessions;
+  final int nextSessionSkip;
+  final bool hasMoreMessages;
+  final bool isLoadingMoreMessages;
+  final int nextMessageSkip;
+
+  /// A one-time message for an action such as a failed remote chat deletion.
+  final String? notice;
 
   /// Stop only makes sense while the on-phone model is writing.
   bool get canStop =>
@@ -36,6 +52,14 @@ class ChatState extends Equatable {
     bool? isGenerating,
     bool? isOnline,
     bool? isLoading,
+    bool? hasMoreSessions,
+    bool? isLoadingMoreSessions,
+    int? nextSessionSkip,
+    bool? hasMoreMessages,
+    bool? isLoadingMoreMessages,
+    int? nextMessageSkip,
+    String? notice,
+    bool clearNotice = false,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -44,6 +68,15 @@ class ChatState extends Equatable {
       isGenerating: isGenerating ?? this.isGenerating,
       isOnline: isOnline ?? this.isOnline,
       isLoading: isLoading ?? this.isLoading,
+      hasMoreSessions: hasMoreSessions ?? this.hasMoreSessions,
+      isLoadingMoreSessions:
+          isLoadingMoreSessions ?? this.isLoadingMoreSessions,
+      nextSessionSkip: nextSessionSkip ?? this.nextSessionSkip,
+      hasMoreMessages: hasMoreMessages ?? this.hasMoreMessages,
+      isLoadingMoreMessages:
+          isLoadingMoreMessages ?? this.isLoadingMoreMessages,
+      nextMessageSkip: nextMessageSkip ?? this.nextMessageSkip,
+      notice: clearNotice ? null : (notice ?? this.notice),
     );
   }
 
@@ -55,5 +88,12 @@ class ChatState extends Equatable {
     isGenerating,
     isOnline,
     isLoading,
+    hasMoreSessions,
+    isLoadingMoreSessions,
+    nextSessionSkip,
+    hasMoreMessages,
+    isLoadingMoreMessages,
+    nextMessageSkip,
+    notice,
   ];
 }

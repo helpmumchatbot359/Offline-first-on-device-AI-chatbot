@@ -18,8 +18,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<GenerationStopped>(_onStopped);
     on<NewChatStarted>(_onNewChat);
     on<ChatHistoryRequested>(_onChatHistoryRequested);
+    on<ChatHistoryMoreRequested>(_onChatHistoryMoreRequested);
+    on<ChatMessagesMoreRequested>(_onChatMessagesMoreRequested);
     on<ChatOpened>(_onChatOpened);
     on<ChatDeleted>(_onChatDeleted);
+    on<ChatNoticeCleared>((event, emit) {
+      emit(state.copyWith(clearNotice: true));
+    });
     on<ChatRenamed>(_onChatRenamed);
     on<ChatBranched>(_onChatBranched);
     on<ConnectivityChanged>(
@@ -40,6 +45,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   Future<void> _onStarted(ChatStarted event, Emitter<ChatState> emit) async {
     var history = <ChatTurn>[];
     var sessions = <ChatSession>[];
+    var hasMoreSessions = false;
+    var nextSessionSkip = 0;
     String? activeChatId;
     var online = true;
     try {
@@ -47,7 +54,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     } catch (_) {}
     try {
       activeChatId = await _repo.activeChatId();
-      sessions = await _repo.loadChatSessions();
+      final page = await _repo.loadChatSessions(includeRemote: false);
+      sessions = page.sessions;
+      hasMoreSessions = page.hasMore;
+      nextSessionSkip = page.nextSkip;
     } catch (_) {}
     try {
       online = _hasNetwork(await _connectivity.checkConnectivity());
@@ -56,6 +66,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       state.copyWith(
         messages: history,
         sessions: sessions,
+        hasMoreSessions: hasMoreSessions,
+        nextSessionSkip: nextSessionSkip,
         activeChatId: activeChatId,
         isOnline: online,
         isLoading: false,
@@ -106,11 +118,71 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ) async {
     if (state.isLoading) return;
     try {
-      final sessions = await _repo.loadChatSessions();
+      final page = await _repo.loadChatSessions();
       final activeChatId = await _repo.activeChatId();
-      emit(state.copyWith(sessions: sessions, activeChatId: activeChatId));
+      emit(
+        state.copyWith(
+          sessions: page.sessions,
+          activeChatId: activeChatId,
+          hasMoreSessions: page.hasMore,
+          nextSessionSkip: page.nextSkip,
+        ),
+      );
     } catch (_) {
       // Keep the list that is already on screen.
+    }
+  }
+
+  Future<void> _onChatHistoryMoreRequested(
+    ChatHistoryMoreRequested event,
+    Emitter<ChatState> emit,
+  ) async {
+    if (!state.hasMoreSessions || state.isLoadingMoreSessions) return;
+    emit(state.copyWith(isLoadingMoreSessions: true));
+    try {
+      final page = await _repo.loadChatSessions(skip: state.nextSessionSkip);
+      emit(
+        state.copyWith(
+          sessions: _mergeSessions(state.sessions, page.sessions),
+          hasMoreSessions: page.hasMore,
+          nextSessionSkip: page.nextSkip,
+          isLoadingMoreSessions: false,
+        ),
+      );
+    } catch (_) {
+      emit(state.copyWith(isLoadingMoreSessions: false));
+    }
+  }
+
+  Future<void> _onChatMessagesMoreRequested(
+    ChatMessagesMoreRequested event,
+    Emitter<ChatState> emit,
+  ) async {
+    final chatId = state.activeChatId;
+    if (chatId == null ||
+        !state.hasMoreMessages ||
+        state.isLoadingMoreMessages ||
+        state.isGenerating) {
+      return;
+    }
+
+    emit(state.copyWith(isLoadingMoreMessages: true));
+    try {
+      final page = await _repo.loadOlderMessages(
+        chatId,
+        skip: state.nextMessageSkip,
+      );
+      final history = await _repo.loadHistory();
+      emit(
+        state.copyWith(
+          messages: history,
+          hasMoreMessages: page.hasMore,
+          nextMessageSkip: page.nextSkip,
+          isLoadingMoreMessages: false,
+        ),
+      );
+    } catch (_) {
+      emit(state.copyWith(isLoadingMoreMessages: false));
     }
   }
 
@@ -135,11 +207,16 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     try {
       await _repo.startNewChat();
       final activeChatId = await _repo.activeChatId();
-      final sessions = await _repo.loadChatSessions();
+      final page = await _repo.loadChatSessions();
       emit(
         state.copyWith(
           messages: const [],
-          sessions: sessions,
+          sessions: page.sessions,
+          hasMoreSessions: page.hasMore,
+          nextSessionSkip: page.nextSkip,
+          hasMoreMessages: false,
+          isLoadingMoreMessages: false,
+          nextMessageSkip: 0,
           activeChatId: activeChatId,
           isGenerating: false,
           isLoading: false,
@@ -154,19 +231,27 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   /// The person tapped a saved conversation in the history drawer.
   Future<void> _onChatOpened(ChatOpened event, Emitter<ChatState> emit) async {
     if (state.isGenerating || state.isLoading) return;
-    if (event.chatId == state.activeChatId) return;
+    if (event.chatId == state.activeChatId && !event.restoreRemote) return;
 
     // Borrow the "busy" flag so no message can be sent while the old chat
     // is being swapped for the selected one.
     emit(state.copyWith(isGenerating: true));
     try {
-      await _repo.openChat(event.chatId);
+      final messagePage = await _repo.openChat(
+        event.chatId,
+        restoreRemote: event.restoreRemote,
+      );
       final history = await _repo.loadHistory();
-      final sessions = await _repo.loadChatSessions();
+      final page = await _repo.loadChatSessions();
       emit(
         state.copyWith(
           messages: history,
-          sessions: sessions,
+          sessions: page.sessions,
+          hasMoreSessions: page.hasMore,
+          nextSessionSkip: page.nextSkip,
+          hasMoreMessages: messagePage.hasMore,
+          isLoadingMoreMessages: false,
+          nextMessageSkip: messagePage.nextSkip,
           activeChatId: event.chatId,
           isGenerating: false,
           isLoading: false,
@@ -190,19 +275,29 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       // If the deleted chat was open, the repository already moved us to a
       // fresh chat. Loading history now gives the correct new state.
       final history = await _repo.loadHistory();
-      final sessions = await _repo.loadChatSessions();
+      final page = await _repo.loadChatSessions();
       final activeChatId = await _repo.activeChatId();
       emit(
         state.copyWith(
           messages: history,
-          sessions: sessions,
+          sessions: page.sessions,
+          hasMoreSessions: page.hasMore,
+          nextSessionSkip: page.nextSkip,
+          hasMoreMessages: false,
+          isLoadingMoreMessages: false,
+          nextMessageSkip: 0,
           activeChatId: activeChatId,
           isGenerating: false,
           isLoading: false,
         ),
       );
     } catch (_) {
-      emit(state.copyWith(isGenerating: false));
+      emit(
+        state.copyWith(
+          isGenerating: false,
+          notice: 'Could not delete this chat. Check your connection and try again.',
+        ),
+      );
     }
   }
 
@@ -212,8 +307,14 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ) async {
     try {
       await _repo.renameChat(event.chatId, event.title);
-      final sessions = await _repo.loadChatSessions();
-      emit(state.copyWith(sessions: sessions));
+      final page = await _repo.loadChatSessions();
+      emit(
+        state.copyWith(
+          sessions: page.sessions,
+          hasMoreSessions: page.hasMore,
+          nextSessionSkip: page.nextSkip,
+        ),
+      );
     } catch (_) {
       // Keep the old name if the phone could not save the new one.
     }
@@ -240,11 +341,16 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
 
       final history = await _repo.loadHistory();
-      final sessions = await _repo.loadChatSessions();
+      final page = await _repo.loadChatSessions();
       emit(
         state.copyWith(
           messages: history,
-          sessions: sessions,
+          sessions: page.sessions,
+          hasMoreSessions: page.hasMore,
+          nextSessionSkip: page.nextSkip,
+          hasMoreMessages: false,
+          isLoadingMoreMessages: false,
+          nextMessageSkip: 0,
           activeChatId: newChatId,
           isGenerating: false,
           isLoading: false,
@@ -276,6 +382,20 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     final copy = List<ChatTurn>.of(list);
     copy[i] = turn;
     return copy;
+  }
+
+  static List<ChatSession> _mergeSessions(
+    List<ChatSession> existing,
+    List<ChatSession> incoming,
+  ) {
+    final byId = <String, ChatSession>{
+      for (final session in existing) session.id: session,
+    };
+    for (final session in incoming) {
+      byId[session.id] = session;
+    }
+    return byId.values.toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
   @override

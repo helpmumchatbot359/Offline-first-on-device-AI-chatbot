@@ -36,7 +36,7 @@ class ChatLocalDataSource {
     if (chat == null) {
       chat = LocalChat(chatId: chatId, createdAt: date, updatedAt: date);
       _chatBox.put(chat);
-    } else {
+    } else if (date.compareTo(chat.updatedAt) > 0) {
       chat.updatedAt = date;
       _chatBox.put(chat);
     }
@@ -77,7 +77,7 @@ class ChatLocalDataSource {
     if (chat == null) {
       chat = LocalChat(chatId: chatId, createdAt: date, updatedAt: date);
     } else {
-      chat.updatedAt = date;
+      if (date.compareTo(chat.updatedAt) > 0) chat.updatedAt = date;
     }
     _chatBox.put(chat);
     return chat;
@@ -177,11 +177,51 @@ class ChatLocalDataSource {
   Future<List<LocalChatMessage>> getMessages(String chatId) async {
     final query = _messageBox
         .query(LocalChatMessage_.chatId.equals(chatId))
-        .order(LocalChatMessage_.id)
+        .order(LocalChatMessage_.date)
         .build();
     final results = query.find();
     query.close();
     return results;
+  }
+
+  /// Adds server history without duplicating rows that already exist locally.
+  /// Imported messages are acknowledged, so the background sync won't upload
+  /// them back to the server.
+  Future<void> mergeRemoteMessages({
+    required String chatId,
+    required List<({String message, String aiResponse, String date})> messages,
+  }) async {
+    if (messages.isEmpty) return;
+
+    final query = _messageBox
+        .query(LocalChatMessage_.chatId.equals(chatId))
+        .build();
+    final existing = query.find();
+    query.close();
+    final byMessageAndDate = <String, LocalChatMessage>{};
+    for (final row in existing) {
+      byMessageAndDate['${row.date}\u0000${row.message}'] = row;
+    }
+
+    for (final remote in messages) {
+      final key = '${remote.date}\u0000${remote.message}';
+      final local = byMessageAndDate[key];
+      if (local != null) {
+        local.aiResponse = remote.aiResponse;
+        local.syncState = 'acknowledged';
+        local.source = 'cloud';
+        _messageBox.put(local);
+      } else {
+        await saveMessage(
+          chatId: chatId,
+          message: remote.message,
+          aiResponse: remote.aiResponse,
+          date: remote.date,
+          syncState: 'acknowledged',
+          source: 'cloud',
+        );
+      }
+    }
   }
 
   // --- Chat history (the list behind the drawer) ---------------------------
@@ -201,7 +241,7 @@ class ChatLocalDataSource {
   Future<LocalChatMessage?> getFirstMessage(String chatId) async {
     final query = _messageBox
         .query(LocalChatMessage_.chatId.equals(chatId))
-        .order(LocalChatMessage_.id)
+        .order(LocalChatMessage_.date)
         .build();
     final result = query.findFirst();
     query.close();
@@ -234,6 +274,13 @@ class ChatLocalDataSource {
     if (chat != null) {
       _chatBox.remove(chat.id);
     }
+  }
+
+  /// Removes all locally stored chats and queued telemetry for account deletion.
+  Future<void> clearAccountData() async {
+    _messageBox.removeAll();
+    _chatBox.removeAll();
+    _telemetryBox.removeAll();
   }
 
   Future<List<LocalChatMessage>> getPendingMessages() async {

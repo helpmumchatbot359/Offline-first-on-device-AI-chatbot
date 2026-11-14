@@ -12,6 +12,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<SignUpSubmitted>(_onSignUp);
     on<SignInSubmitted>(_onSignIn);
     on<SignedOut>(_onSignedOut);
+    on<AccountDeletionRequested>(_onAccountDeletionRequested);
     on<SessionExpired>(_onSessionExpired);
 
     // Listen for "your 30 days are over" coming from the network layer.
@@ -97,6 +98,27 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       // Even if cleanup fails, the person asked to leave.
     }
     emit(const AuthState(status: AuthStatus.unauthenticated));
+  }
+
+  Future<void> _onAccountDeletionRequested(
+    AccountDeletionRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    if (state.busy) return;
+    emit(state.copyWith(busy: true, error: null));
+    try {
+      await _repo.deleteAccount();
+      emit(const AuthState(status: AuthStatus.unauthenticated));
+    } on AuthException catch (e) {
+      emit(state.copyWith(busy: false, error: e.message));
+    } catch (_) {
+      emit(
+        state.copyWith(
+          busy: false,
+          error: 'Could not delete your account. Please try again.',
+        ),
+      );
+    }
   }
 
   Future<void> _onSessionExpired(

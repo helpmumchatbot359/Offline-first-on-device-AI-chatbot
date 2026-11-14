@@ -41,6 +41,37 @@ class SettingsPage extends StatelessWidget {
     if (ok == true) authBloc.add(SignedOut());
   }
 
+  Future<void> _confirmDeleteAccount(BuildContext context) async {
+    final authBloc = context.read<AuthBloc>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete account permanently?'),
+        content: const Text(
+          'This will delete your account and remove your saved chats from this '
+          'phone. You will be signed out. Anonymous analytics may be retained. '
+          'This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+              minimumSize: const Size(120, 44),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete account'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) authBloc.add(AccountDeletionRequested());
+  }
+
   void _openLegal(
     BuildContext context, {
     required String title,
@@ -101,7 +132,9 @@ class SettingsPage extends StatelessWidget {
           buildWhen: (previous, current) =>
               previous.displayName != current.displayName ||
               previous.email != current.email ||
-              previous.status != current.status,
+              previous.status != current.status ||
+              previous.busy != current.busy ||
+              previous.error != current.error,
           builder: (context, auth) {
             final name = (auth.displayName?.trim().isNotEmpty ?? false)
                 ? auth.displayName!.trim()
@@ -219,16 +252,59 @@ class SettingsPage extends StatelessWidget {
                     borderRadius: BorderRadius.circular(18),
                     side: BorderSide(color: scheme.outlineVariant),
                   ),
-                  child: ListTile(
-                    leading: Icon(Icons.logout_rounded, color: scheme.error),
-                    title: Text(
-                      'Sign out',
-                      style: TextStyle(
-                        color: scheme.error,
-                        fontWeight: FontWeight.w600,
+                  child: Column(
+                    children: [
+                      if (auth.error != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          child: Text(
+                            auth.error!,
+                            style: TextStyle(color: scheme.error),
+                          ),
+                        ),
+                      ListTile(
+                        enabled: !auth.busy,
+                        leading: Icon(
+                          Icons.delete_forever_outlined,
+                          color: scheme.error,
+                        ),
+                        title: Text(
+                          auth.busy ? 'Deleting account…' : 'Delete account',
+                          style: TextStyle(
+                            color: scheme.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          'Permanently delete your account and saved chats',
+                        ),
+                        trailing: auth.busy
+                            ? const SizedBox.square(
+                                dimension: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : null,
+                        onTap: auth.busy
+                            ? null
+                            : () => _confirmDeleteAccount(context),
                       ),
-                    ),
-                    onTap: () => _confirmSignOut(context),
+                      Divider(
+                        height: 1,
+                        indent: 16,
+                        endIndent: 16,
+                        color: scheme.outlineVariant,
+                      ),
+                      ListTile(
+                        enabled: !auth.busy,
+                        leading: const Icon(Icons.logout_rounded),
+                        title: const Text('Sign out'),
+                        onTap: auth.busy
+                            ? null
+                            : () => _confirmSignOut(context),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 24),

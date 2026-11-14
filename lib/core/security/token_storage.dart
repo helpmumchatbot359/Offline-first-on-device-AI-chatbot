@@ -71,6 +71,17 @@ class TokenStorage {
     // accounts.
   }
 
+  /// Removes account identity and the active chat after permanent deletion.
+  /// Theme and offline-model preferences belong to this phone, so they remain.
+  Future<void> clearAccountData() async {
+    await clearSession();
+    await _s.delete(key: _userIdKey);
+    await _s.delete(key: _chatIdKey);
+    await _s.delete(key: _profileNameKey);
+    await _s.delete(key: _profileEmailKey);
+    await _s.delete(key: _chatTitlesKey);
+  }
+
   // ---- Profile (shown in the drawer and settings) ----
   Future<void> saveProfileName(String name) =>
       _s.write(key: _profileNameKey, value: name.trim());
