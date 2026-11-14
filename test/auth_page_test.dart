@@ -5,12 +5,16 @@ import 'package:mama_ai/core/security/token_storage.dart';
 import 'package:mama_ai/core/theme/app_theme.dart';
 import 'package:mama_ai/core/theme/theme_bloc/theme_bloc.dart';
 import 'package:mama_ai/features/auth/domain/auth_repository.dart';
+import 'package:mama_ai/features/auth/domain/user_profile.dart';
 import 'package:mama_ai/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:mama_ai/features/auth/presentation/pages/auth_page.dart';
 
 class _FakeAuthRepository implements AuthRepository {
   @override
   Future<bool> hasSession() async => false;
+
+  @override
+  Future<UserProfile?> currentUser() async => null;
 
   @override
   Future<void> signIn({
@@ -129,6 +133,10 @@ void main() {
     await tester.tap(find.text('Female').last);
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byType(Checkbox));
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+
     await tester.ensureVisible(find.text('Create account'));
     await tester.tap(find.text('Create account'));
     await tester.pumpAndSettle();
@@ -136,6 +144,39 @@ void main() {
     expect(find.text('Account created. Sign in to continue.'), findsOneWidget);
     expect(find.text('Welcome back,\nMama.'), findsOneWidget);
     expect(find.text('Create account'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('sign up is blocked until the terms are accepted', (
+    tester,
+  ) async {
+    await pumpAuthPage(tester);
+
+    await tester.tap(find.text('Sign up'));
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'Ada');
+    await tester.enterText(fields.at(1), 'Nigeria');
+    await tester.enterText(fields.at(2), 'ada@example.com');
+    await tester.enterText(fields.at(3), 'secret123');
+
+    await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Female').last);
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Create account'));
+    await tester.tap(find.text('Create account'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Please accept the Terms of Use and Privacy Policy.'),
+      findsOneWidget,
+    );
+    expect(find.text('Account created. Sign in to continue.'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

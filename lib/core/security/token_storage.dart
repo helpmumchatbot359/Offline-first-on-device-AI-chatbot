@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 
@@ -25,6 +27,11 @@ class TokenStorage {
   static const _userIdKey =
       'local_user_id'; // stable id for this phone's offline data
   static const _chatIdKey = 'active_chat_id'; // the conversation currently open
+  static const _profileNameKey = 'profile_name';
+  static const _profileEmailKey = 'profile_email';
+  static const _chatTitlesKey = 'chat_titles'; // custom names, keyed by chat id
+  static const _offlineBannerHiddenKey =
+      'offline_banner_hidden'; // "hide for now" on chat
 
   // ---- Access token (the 8-hour JWT) ----
   Future<String?> readToken() => _s.read(key: _tokenKey);
@@ -53,16 +60,76 @@ class TokenStorage {
     return SavedLogin(email: email, password: password);
   }
 
-  /// Throws away the JWT AND the saved login. This is what "signed out" means.
   Future<void> clearSession() async {
     await _s.delete(key: _tokenKey);
     await _s.delete(key: _emailKey);
     await _s.delete(key: _passwordKey);
+    // The friendly name and email are deliberately kept. The server only
+    // returns a token on sign-in, so this is the only way to remember the
+    // username the person chose. A different account signing in overwrites
+    // them (see saveProfileEmail below), so the old name never leaks across
+    // accounts.
+  }
+
+  // ---- Profile (shown in the drawer and settings) ----
+  Future<void> saveProfileName(String name) =>
+      _s.write(key: _profileNameKey, value: name.trim());
+
+  Future<String?> readProfileName() => _s.read(key: _profileNameKey);
+
+  /// Remembers the email and forgets a name that belonged to another account.
+  Future<void> saveProfileEmail(String email) async {
+    final clean = email.trim();
+    final previous = await _s.read(key: _profileEmailKey);
+    if (previous != null && previous.toLowerCase() != clean.toLowerCase()) {
+      await _s.delete(key: _profileNameKey);
+    }
+    await _s.write(key: _profileEmailKey, value: clean);
+  }
+
+  Future<String?> readProfileEmail() => _s.read(key: _profileEmailKey);
+
+  // ---- Custom chat names ----
+  Future<Map<String, String>> readChatTitles() async {
+    final raw = await _s.read(key: _chatTitlesKey);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return decoded.map(
+          (key, value) => MapEntry(key.toString(), value.toString()),
+        );
+      }
+    } catch (_) {
+      // A corrupt value must never stop the history list from loading.
+    }
+    return {};
+  }
+
+  Future<void> saveChatTitle(String chatId, String title) async {
+    final titles = await readChatTitles();
+    titles[chatId] = title;
+    await _s.write(key: _chatTitlesKey, value: jsonEncode(titles));
+  }
+
+  Future<void> deleteChatTitle(String chatId) async {
+    final titles = await readChatTitles();
+    if (titles.remove(chatId) == null) return;
+    await _s.write(key: _chatTitlesKey, value: jsonEncode(titles));
   }
 
   // ---- Theme ----
   Future<String?> readTheme() => _s.read(key: _themeKey);
   Future<void> saveTheme(String mode) => _s.write(key: _themeKey, value: mode);
+
+  // ---- Offline download card ("hide for now") ----
+  // Saved so that once a person hides the card on the chat screen it stays
+  // hidden after the app is restarted. The download itself is unaffected.
+  Future<bool> readOfflineBannerHidden() async =>
+      (await _s.read(key: _offlineBannerHiddenKey)) == 'true';
+
+  Future<void> saveOfflineBannerHidden(bool hidden) =>
+      _s.write(key: _offlineBannerHiddenKey, value: hidden ? 'true' : 'false');
 
   // ---- Chat identity ----
 

@@ -40,25 +40,92 @@ class MamaColors {
 
   /// A darker version of [slateGlow] for the dark theme.
   static const slateGlowDark = Color(0xFF3A5568);
+
+  /// Warm berry accent used on the sign-in / sign-up screen. Green is the
+  /// page background there, so the primary actions use its opposite hue to
+  /// stop the screen becoming "green on green".
+  static const berry = Color(0xFF8E3B5E);
+  static const berryDeep = Color(0xFF6E2A47);
 }
 
 /// The deep emerald "welcome" palette.
 ///
 /// Onboarding and the auth screen are the only two places where green becomes
-/// the whole page instead of just an accent. This class keeps their colours in
-/// one place so the two screens can never slowly drift apart, and so light and
-/// dark mode always move together.
-class MamaHeroColors {
-  const MamaHeroColors({required this.isDark});
+/// the whole page instead of just an accent. This is a [ThemeExtension] so
+/// Material's built-in theme animation can *blend* these colours instead of
+/// snapping between light and dark. That is what removes the flash when the
+/// person taps the sun/moon button on those screens.
+@immutable
+class MamaHeroColors extends ThemeExtension<MamaHeroColors> {
+  const MamaHeroColors({
+    required this.isDark,
+    // The colours are optional so `MamaHeroColors(isDark: ...)` is still
+    // valid: it picks the matching light or dark palette automatically.
+    Color? top,
+    Color? mid,
+    Color? bottom,
+    Color? glow,
+    Color? glow2,
+  }) : top = top ?? (isDark ? _darkTop : _lightTop),
+       mid = mid ?? (isDark ? _darkMid : _lightMid),
+       bottom = bottom ?? (isDark ? _darkBottom : _lightBottom),
+       glow = glow ?? (isDark ? _darkGlow : _lightGlow),
+       glow2 = glow2 ?? (isDark ? _darkGlow2 : _lightGlow2);
 
   final bool isDark;
+  final Color top;
+  final Color mid;
+  final Color bottom;
+  final Color glow;
+  final Color glow2;
 
-  Color get top => isDark ? const Color(0xFF064C36) : const Color(0xFF0B8A63);
-  Color get mid => isDark ? const Color(0xFF032D21) : const Color(0xFF066147);
-  Color get bottom =>
-      isDark ? const Color(0xFF01150E) : const Color(0xFF023726);
-  Color get glow => isDark ? const Color(0xFF1FC98D) : const Color(0xFF7BF7C7);
-  Color get glow2 => isDark ? const Color(0xFF0B8C65) : const Color(0xFF34D399);
+  static const _lightTop = Color(0xFF0B8A63);
+  static const _lightMid = Color(0xFF066147);
+  static const _lightBottom = Color(0xFF023726);
+  static const _lightGlow = Color(0xFF7BF7C7);
+  static const _lightGlow2 = Color(0xFF34D399);
+  static const _darkTop = Color(0xFF064C36);
+  static const _darkMid = Color(0xFF032D21);
+  static const _darkBottom = Color(0xFF01150E);
+  static const _darkGlow = Color(0xFF1FC98D);
+  static const _darkGlow2 = Color(0xFF0B8C65);
+
+  static const light = MamaHeroColors(isDark: false);
+
+  static const dark = MamaHeroColors(isDark: true);
+
+  @override
+  MamaHeroColors copyWith({
+    bool? isDark,
+    Color? top,
+    Color? mid,
+    Color? bottom,
+    Color? glow,
+    Color? glow2,
+  }) {
+    return MamaHeroColors(
+      isDark: isDark ?? this.isDark,
+      top: top ?? this.top,
+      mid: mid ?? this.mid,
+      bottom: bottom ?? this.bottom,
+      glow: glow ?? this.glow,
+      glow2: glow2 ?? this.glow2,
+    );
+  }
+
+  @override
+  MamaHeroColors lerp(ThemeExtension<MamaHeroColors>? other, double t) {
+    if (other is! MamaHeroColors) return this;
+    return MamaHeroColors(
+      // A single switch at the midpoint, while every colour blends smoothly.
+      isDark: t < 0.5 ? isDark : other.isDark,
+      top: Color.lerp(top, other.top, t)!,
+      mid: Color.lerp(mid, other.mid, t)!,
+      bottom: Color.lerp(bottom, other.bottom, t)!,
+      glow: Color.lerp(glow, other.glow, t)!,
+      glow2: Color.lerp(glow2, other.glow2, t)!,
+    );
+  }
 }
 
 /// Extra colours for the chat screen that Material's ColorScheme has no slot for.
@@ -214,6 +281,8 @@ extension MamaThemeContext on BuildContext {
   MamaChatColors get chatColors => Theme.of(this).extension<MamaChatColors>()!;
   MamaSurfaceColors get brandColors =>
       Theme.of(this).extension<MamaSurfaceColors>()!;
+  MamaHeroColors get heroColors =>
+      Theme.of(this).extension<MamaHeroColors>()!;
 }
 
 class AppTheme {
@@ -221,7 +290,9 @@ class AppTheme {
 
   // `static final` = built once, not on every rebuild.
   static final ThemeData light = _build(
-    scaffold: const Color(0xFFF7F8F7),
+    // A soft, paper-like grey-green instead of near-white. Pure white on a
+    // phone screen is tiring to look at, especially on the Settings page.
+    scaffold: const Color(0xFFEDF1ED),
     scheme: const ColorScheme(
       brightness: Brightness.light,
       primary: MamaColors.brandGreen,
@@ -236,17 +307,17 @@ class AppTheme {
       onTertiary: Color(0xFFFFFFFF),
       error: Color(0xFFB3261E),
       onError: Color(0xFFFFFFFF),
-      surface: Color(0xFFFFFFFF),
+      surface: Color(0xFFF9FBF8),
       onSurface: Color(0xFF1A1C1B),
-      onSurfaceVariant: Color(0xFF5F6663),
-      outline: Color(0xFF8A928E),
-      outlineVariant: Color(0xFFE3E8E5),
+      onSurfaceVariant: Color(0xFF565F59),
+      outline: Color(0xFF7D8680),
+      outlineVariant: Color(0xFFD9E2DB),
       surfaceTint: Color(0x00000000),
-      surfaceContainerLowest: Color(0xFFFFFFFF),
-      surfaceContainerLow: Color(0xFFF7F9F8),
-      surfaceContainer: Color(0xFFF1F4F2),
-      surfaceContainerHigh: Color(0xFFE9EDEA),
-      surfaceContainerHighest: Color(0xFFE1E6E3),
+      surfaceContainerLowest: Color(0xFFFDFEFC),
+      surfaceContainerLow: Color(0xFFF3F7F3),
+      surfaceContainer: Color(0xFFE9EFEA),
+      surfaceContainerHigh: Color(0xFFE0E7E1),
+      surfaceContainerHighest: Color(0xFFD7DFD8),
       inverseSurface: Color(0xFF2F3130),
       onInverseSurface: Color(0xFFF2F4F3),
       inversePrimary: Color(0xFF7DD3B8),
@@ -256,9 +327,9 @@ class AppTheme {
     chat: const MamaChatColors(
       userBubble: MamaColors.brandGreen,
       onUserBubble: Color(0xFFFFFFFF),
-      aiBubble: Color(0xFFFFFFFF),
+      aiBubble: Color(0xFFFBFCFA),
       onAiBubble: Color(0xFF1A1C1B),
-      aiBubbleBorder: Color(0xFFE3E8E5),
+      aiBubbleBorder: Color(0xFFD9E2DB),
       meta: Color(0xFF6B7370),
       offlineBadge: Color(0xFFFFF4DE),
       onOfflineBadge: Color(0xFF7A4A00),
@@ -268,20 +339,19 @@ class AppTheme {
       offline: Color(0xFFB26A00),
     ),
     brand: const MamaSurfaceColors(
-      // Starts almost white and only hints at mint near the bottom. The
-      // transition is spread over four stops so it never "jumps" from one
-      // colour to another.
+      // A calm, slightly grey-green wash. It stays clearly lighter than the
+      // text but never becomes the harsh near-white it used to be.
       backgroundGradient: [
-        Color(0xFFF7F8F7),
-        Color(0xFFF4F8F6),
-        Color(0xFFEDF4F0),
-        Color(0xFFE6F0EB),
+        Color(0xFFEDF1ED),
+        Color(0xFFE9F0EA),
+        Color(0xFFE2ECE6),
+        Color(0xFFDBE7E1),
       ],
       aurora: [Color(0xFF34D399), Color(0xFF2DD4BF), MamaColors.slateGlow],
       ctaGradient: [Color(0xFF0B7A55), Color(0xFF0F805C)],
       onCta: Color(0xFFFFFFFF),
       glassFill: Color(0xB8FFFFFF),
-      glassBorder: Color(0xFFDCEBE4),
+      glassBorder: Color(0xFFD5E4DC),
     ),
   );
 
@@ -372,7 +442,11 @@ class AppTheme {
       brightness: scheme.brightness,
       colorScheme: scheme,
       scaffoldBackgroundColor: scaffold,
-      extensions: <ThemeExtension<dynamic>>[chat, brand],
+      extensions: <ThemeExtension<dynamic>>[
+        chat,
+        brand,
+        isDark ? MamaHeroColors.dark : MamaHeroColors.light,
+      ],
 
       // The header is now a neutral surface in BOTH themes. In light mode it
       // is the same off-white as the page; in dark mode it is the same

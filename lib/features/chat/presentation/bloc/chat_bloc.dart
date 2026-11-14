@@ -20,6 +20,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ChatHistoryRequested>(_onChatHistoryRequested);
     on<ChatOpened>(_onChatOpened);
     on<ChatDeleted>(_onChatDeleted);
+    on<ChatRenamed>(_onChatRenamed);
+    on<ChatBranched>(_onChatBranched);
     on<ConnectivityChanged>(
       (e, emit) => emit(state.copyWith(isOnline: e.isOnline)),
     );
@@ -195,6 +197,55 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           messages: history,
           sessions: sessions,
           activeChatId: activeChatId,
+          isGenerating: false,
+          isLoading: false,
+        ),
+      );
+    } catch (_) {
+      emit(state.copyWith(isGenerating: false));
+    }
+  }
+
+  Future<void> _onChatRenamed(
+    ChatRenamed event,
+    Emitter<ChatState> emit,
+  ) async {
+    try {
+      await _repo.renameChat(event.chatId, event.title);
+      final sessions = await _repo.loadChatSessions();
+      emit(state.copyWith(sessions: sessions));
+    } catch (_) {
+      // Keep the old name if the phone could not save the new one.
+    }
+  }
+
+  Future<void> _onChatBranched(
+    ChatBranched event,
+    Emitter<ChatState> emit,
+  ) async {
+    if (state.isGenerating || state.isLoading || state.messages.isEmpty) return;
+
+    // Copying can take a moment. The busy flag also stops a message from
+    // landing in the old chat while the new one is being prepared.
+    emit(state.copyWith(isGenerating: true));
+    try {
+      String? currentTitle;
+      for (final session in state.sessions) {
+        if (session.id == state.activeChatId) currentTitle = session.title;
+      }
+
+      final newChatId = await _repo.branchChat();
+      if (currentTitle != null && currentTitle.trim().isNotEmpty) {
+        await _repo.renameChat(newChatId, '$currentTitle (branch)');
+      }
+
+      final history = await _repo.loadHistory();
+      final sessions = await _repo.loadChatSessions();
+      emit(
+        state.copyWith(
+          messages: history,
+          sessions: sessions,
+          activeChatId: newChatId,
           isGenerating: false,
           isLoading: false,
         ),

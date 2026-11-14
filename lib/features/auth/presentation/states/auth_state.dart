@@ -9,6 +9,8 @@ class AuthState extends Equatable {
     this.busy = false,
     this.error,
     this.justSignedUp = false,
+    this.displayName,
+    this.email,
   });
 
   final AuthStatus status;
@@ -22,20 +24,36 @@ class AuthState extends Equatable {
   /// following state falls back to false, so nothing lingers.
   final bool justSignedUp;
 
+  /// Friendly identity shown in the drawer, app bar and settings. It is
+  /// optional: older accounts may only have an email on this phone.
+  final String? displayName;
+  final String? email;
+
   AuthState copyWith({
     AuthStatus? status,
     bool? busy,
     String? error,
     bool justSignedUp = false,
+    String? displayName,
+    String? email,
   }) {
     return AuthState(
       status: status ?? this.status,
       busy: busy ?? false,
       error: error,
       justSignedUp: justSignedUp,
+      displayName: displayName ?? this.displayName,
+      email: email ?? this.email,
     );
   }
 
   @override
-  List<Object?> get props => [status, busy, error, justSignedUp];
+  List<Object?> get props => [
+    status,
+    busy,
+    error,
+    justSignedUp,
+    displayName,
+    email,
+  ];
 }

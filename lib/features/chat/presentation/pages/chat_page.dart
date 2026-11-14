@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/mama_background.dart';
 import '../../../../core/widgets/mama_logo.dart';
 import '../../../../core/widgets/theme_toggle_button.dart';
+import '../../../../core/widgets/user_avatar.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../auth/presentation/events/auth_event.dart';
+import '../../../auth/presentation/states/auth_state.dart';
+import '../../../settings/presentation/pages/settings_page.dart';
 import '../../domain/chat_session.dart';
 import '../../domain/chat_turn.dart';
 import '../bloc/chat_bloc.dart';
+import '../cubit/offline_setup_cubit.dart';
 import '../events/chat_event.dart';
 import '../states/chat_state.dart';
+import '../utils/conversation_actions.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/offline_model_banner.dart';
@@ -38,11 +42,7 @@ class ChatPage extends StatelessWidget {
       appBar: AppBar(
         titleSpacing: 16,
         title: const _Title(),
-        actions: const [
-          _NewChatButton(),
-          ThemeToggleButton(),
-          _ChatMenuButton(),
-        ],
+        actions: const [_ChatActions()],
       ),
       body: const SafeArea(
         top: false,
@@ -107,6 +107,112 @@ class _Title extends StatelessWidget {
   }
 }
 
+/// The right side of the app bar. A brand-new chat shows the person's badge
+/// (like Gemini's avatar); a conversation shows the chat actions instead.
+class _ChatActions extends StatelessWidget {
+  const _ChatActions();
+
+  @override
+  Widget build(BuildContext context) {
+    // The profile chip plus a full-size theme button is a tight fit on small
+    // phones. The theme switch also lives in Settings, so drop it from the
+    // bar below 380dp rather than risk an overflow.
+    final showThemeToggle = MediaQuery.sizeOf(context).width >= 380;
+
+    return BlocSelector<ChatBloc, ChatState, bool>(
+      selector: (state) => state.messages.isEmpty && !state.isLoading,
+      builder: (context, isFreshChat) {
+        if (isFreshChat) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _ProfileChip(),
+              if (showThemeToggle) const ThemeToggleButton(),
+            ],
+          );
+        }
+        return const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [_NewChatButton(), ThemeToggleButton(), _ChatMenuButton()],
+        );
+      },
+    );
+  }
+}
+
+class _ProfileChip extends StatelessWidget {
+  const _ProfileChip();
+
+  void _openSettings(BuildContext context) {
+    final offlineSetupCubit = context.read<OfflineSetupCubit>();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => BlocProvider.value(
+          value: offlineSetupCubit,
+          child: const SettingsPage(),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return BlocBuilder<AuthBloc, AuthState>(
+      buildWhen: (previous, current) =>
+          previous.displayName != current.displayName ||
+          previous.email != current.email,
+      builder: (context, auth) {
+        final name = auth.displayName?.trim();
+        final email = auth.email?.trim() ?? '';
+        final initial = _initialFor(name, email);
+        final label = (name != null && name.isNotEmpty) ? name : 'Mama';
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(22),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => _openSettings(context),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 3, 10, 3),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    UserAvatar(initial: initial, radius: 15),
+                    const SizedBox(width: 7),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 82),
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  static String _initialFor(String? name, String email) {
+    final source = (name != null && name.isNotEmpty) ? name : email;
+    if (source.isEmpty) return 'M';
+    return String.fromCharCode(source.runes.first).toUpperCase();
+  }
+}
+
 class _NewChatButton extends StatelessWidget {
   const _NewChatButton();
 
@@ -155,28 +261,50 @@ class _NewChatButton extends StatelessWidget {
 class _ChatMenuButton extends StatelessWidget {
   const _ChatMenuButton();
 
-  Future<void> _confirmSignOut(BuildContext context) async {
-    final ok = await showDialog<bool>(
+  Future<void> _renameChat(
+    BuildContext context,
+    String chatId,
+    String currentTitle,
+  ) async {
+    final bloc = context.read<ChatBloc>();
+    final controller = TextEditingController(text: currentTitle);
+    final newTitle = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Sign out?'),
-        content: const Text('You can sign in again any time.'),
+        title: const Text('Rename chat'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 80,
+          buildCounter: (
+            _, {
+            required currentLength,
+            required isFocused,
+            maxLength,
+          }) => null,
+          textCapitalization: TextCapitalization.sentences,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (value) => Navigator.pop(ctx, value),
+          decoration: const InputDecoration(hintText: 'Give this chat a name'),
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Stay'),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(minimumSize: const Size(88, 44)),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Sign out'),
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Save'),
           ),
         ],
       ),
     );
-    if (ok == true && context.mounted) {
-      context.read<AuthBloc>().add(SignedOut());
-    }
+    controller.dispose();
+
+    final clean = newTitle?.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (clean == null || clean.isEmpty || clean == currentTitle.trim()) return;
+    bloc.add(ChatRenamed(chatId, clean));
   }
 
   Future<void> _confirmDelete(
@@ -210,24 +338,70 @@ class _ChatMenuButton extends StatelessWidget {
     if (ok == true) bloc.add(ChatDeleted(chatId));
   }
 
+  Future<void> _confirmSignOut(BuildContext context) async {
+    final authBloc = context.read<AuthBloc>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Your saved chats will stay on this phone. You can sign in again '
+          'any time.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Stay'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(88, 44)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) authBloc.add(SignedOut());
+  }
+
   Future<void> _copyConversation(
     BuildContext context,
     List<ChatTurn> turns,
   ) async {
-    final transcript = StringBuffer();
-    for (final turn in turns) {
-      final question = turn.message.trim();
-      final answer = turn.aiResponse.trim();
-      if (question.isNotEmpty) transcript.writeln('You: $question');
-      if (answer.isNotEmpty) transcript.writeln('MamaBot: $answer');
-      transcript.writeln();
-    }
-    if (transcript.isEmpty) return;
-
-    await Clipboard.setData(ClipboardData(text: transcript.toString().trim()));
+    await ConversationActions.copy(turns);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('Conversation copied')));
+  }
+
+  Future<void> _draftInGmail(BuildContext context, List<ChatTurn> turns) async {
+    final opened = await ConversationActions.draftInGmail(turns);
+    if (opened || !context.mounted) return;
+    await ConversationActions.copy(turns);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'No email app was found. The conversation was copied instead.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportToDocs(BuildContext context, List<ChatTurn> turns) async {
+    final shared = await ConversationActions.exportToDocs(turns);
+    if (!context.mounted) return;
+    if (!shared) {
+      await ConversationActions.copy(turns);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not open the share sheet. The conversation was copied.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _sendFeedback(BuildContext context, ChatTurn turn) async {
@@ -289,8 +463,18 @@ class _ChatMenuButton extends StatelessWidget {
         return PopupMenuButton<String>(
           tooltip: 'More options',
           onSelected: (value) {
-            if (value == 'copy') {
+            if (value == 'rename') {
+              if (state.activeChatId != null) {
+                _renameChat(context, state.activeChatId!, chatTitle);
+              }
+            } else if (value == 'branch') {
+              context.read<ChatBloc>().add(const ChatBranched());
+            } else if (value == 'copy') {
               _copyConversation(context, state.messages);
+            } else if (value == 'docs') {
+              _exportToDocs(context, state.messages);
+            } else if (value == 'gmail') {
+              _draftInGmail(context, state.messages);
             } else if (value == 'feedback') {
               if (lastAnswer != null) _sendFeedback(context, lastAnswer);
             } else if (value == 'delete') {
@@ -303,6 +487,23 @@ class _ChatMenuButton extends StatelessWidget {
           },
           itemBuilder: (_) => [
             PopupMenuItem(
+              value: 'rename',
+              enabled: hasChat,
+              child: const _MenuItem(
+                icon: Icons.edit_outlined,
+                label: 'Rename chat',
+              ),
+            ),
+            PopupMenuItem(
+              value: 'branch',
+              enabled: hasChat && !state.isGenerating,
+              child: const _MenuItem(
+                icon: Icons.account_tree_outlined,
+                label: 'Branch in new chat',
+              ),
+            ),
+            const PopupMenuDivider(),
+            PopupMenuItem(
               value: 'copy',
               enabled: state.messages.isNotEmpty,
               child: const _MenuItem(
@@ -310,6 +511,23 @@ class _ChatMenuButton extends StatelessWidget {
                 label: 'Copy conversation',
               ),
             ),
+            PopupMenuItem(
+              value: 'docs',
+              enabled: state.messages.isNotEmpty,
+              child: const _MenuItem(
+                icon: Icons.description_outlined,
+                label: 'Export to Docs',
+              ),
+            ),
+            PopupMenuItem(
+              value: 'gmail',
+              enabled: state.messages.isNotEmpty,
+              child: const _MenuItem(
+                icon: Icons.mail_outline_rounded,
+                label: 'Draft in Gmail',
+              ),
+            ),
+            const PopupMenuDivider(),
             PopupMenuItem(
               value: 'feedback',
               enabled: lastAnswer != null,
@@ -327,9 +545,13 @@ class _ChatMenuButton extends StatelessWidget {
               ),
             ),
             const PopupMenuDivider(),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'signout',
-              child: _MenuItem(icon: Icons.logout_rounded, label: 'Sign out'),
+              child: _MenuItem(
+                icon: Icons.logout_rounded,
+                label: 'Sign out',
+                color: Theme.of(context).colorScheme.error,
+              ),
             ),
           ],
         );
@@ -339,20 +561,22 @@ class _ChatMenuButton extends StatelessWidget {
 }
 
 class _MenuItem extends StatelessWidget {
-  const _MenuItem({required this.icon, required this.label});
+  const _MenuItem({required this.icon, required this.label, this.color});
 
   final IconData icon;
   final String label;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final ink = color ?? scheme.onSurfaceVariant;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+        Icon(icon, size: 20, color: ink),
         const SizedBox(width: 12),
-        Text(label),
+        Text(label, style: TextStyle(color: color)),
       ],
     );
   }
@@ -508,7 +732,7 @@ class _ChatHistoryDrawer extends StatelessWidget {
                           },
                         ),
                 ),
-                _DrawerFooter(scheme: scheme),
+                _DrawerAccount(scheme: scheme),
               ],
             ),
           ),
@@ -647,34 +871,93 @@ class _EmptyHistory extends StatelessWidget {
   }
 }
 
-class _DrawerFooter extends StatelessWidget {
-  const _DrawerFooter({required this.scheme});
+/// The account row that replaces the old storage note at the bottom of the
+/// drawer: avatar, name and a direct way into Settings.
+class _DrawerAccount extends StatelessWidget {
+  const _DrawerAccount({required this.scheme});
 
   final ColorScheme scheme;
 
+  void _openSettings(BuildContext context) {
+    final offlineSetupCubit = context.read<OfflineSetupCubit>();
+    final navigator = Navigator.of(context);
+    navigator.pop(); // close the drawer first
+    navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => BlocProvider.value(
+          value: offlineSetupCubit,
+          child: const SettingsPage(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.lock_outline_rounded,
-            size: 13,
-            color: scheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              'Your chats are saved on this phone.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant, fontSize: 11.5),
+    return BlocBuilder<AuthBloc, AuthState>(
+      buildWhen: (previous, current) =>
+          previous.displayName != current.displayName,
+      builder: (context, auth) {
+        final name = auth.displayName?.trim();
+        // Only the username is shown here. The email stays in Settings where
+        // it belongs, so the drawer footer feels personal rather than
+        // technical.
+        final label = (name != null && name.isNotEmpty) ? name : 'Mama';
+        final initial = String.fromCharCode(label.runes.first).toUpperCase();
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Divider(
+              height: 1,
+              indent: 18,
+              endIndent: 18,
+              color: scheme.outlineVariant.withValues(alpha: 0.7),
             ),
-          ),
-        ],
-      ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 14),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(24),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => _openSettings(context),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+                    child: Row(
+                      children: [
+                        UserAvatar(initial: initial, radius: 17),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w700,
+                              color: scheme.onSurface,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Settings',
+                          onPressed: () => _openSettings(context),
+                          icon: Icon(
+                            Icons.settings_outlined,
+                            size: 21,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

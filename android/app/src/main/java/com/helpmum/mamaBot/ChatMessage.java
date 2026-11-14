@@ -1,4 +1,4 @@
-package com.example.mama_ai;
+package com.helpmum.mamaBot;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;

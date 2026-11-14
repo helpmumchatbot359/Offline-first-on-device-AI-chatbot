@@ -47,6 +47,8 @@ dependencies:
   cupertino_icons: ^2.0.0
   path: ^1.9.1
   flutter_dotenv: ^6.0.1
+  url_launcher: ^6.3.3
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:
@@ -80,6 +82,8 @@ flutter:
     - assets/knowledge/knowledge.sqlite3
     - assets/prompts/system_prompt.txt
     - assets/contracts/tool_contract.json
+    - assets/legal/terms_of_use.md
+    - assets/legal/privacy_policy.md
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

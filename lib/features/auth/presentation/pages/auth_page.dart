@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/mama_logo.dart';
 import '../../../../core/widgets/theme_toggle_button.dart';
+import '../../../settings/presentation/pages/legal_document_page.dart';
 import '../bloc/auth_bloc.dart';
 import '../events/auth_event.dart';
 import '../states/auth_state.dart';
@@ -44,8 +45,15 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
 
   final _passwordFocus = FocusNode();
 
+  /// Marks the submit button so switching to the taller sign-up form can
+  /// gently scroll it into view instead of leaving it cut off below the fold.
+  final _submitKey = GlobalKey();
+  Timer? _submitRevealTimer;
+
   late bool _isSignIn;
   bool _obscurePassword = true;
+  bool _acceptedTerms = false;
+  bool _showTermsError = false;
   String? _selectedGender;
 
   /// A single note shown just above the fields. Errors and the "account
@@ -125,6 +133,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _submitRevealTimer?.cancel();
     _entrance.dispose();
     _aurora.dispose();
     _emailController.dispose();
@@ -145,7 +154,48 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
       // A fresh FormState drops the old error text without clearing text.
       _formKey = GlobalKey<FormState>();
       _feedback = null;
+      _showTermsError = false;
     });
+
+    // Sign-up adds four fields, which pushes "Create account" below the fold.
+    // After the fold-out animation has finished, scroll it up so it sits with
+    // a clear gap above the bottom edge (and above any system navigation bar).
+    if (!signIn) _revealSubmitButton();
+  }
+
+  void _revealSubmitButton() {
+    _submitRevealTimer?.cancel();
+
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+    void reveal() {
+      final buttonContext = _submitKey.currentContext;
+      if (!mounted || buttonContext == null) return;
+      Scrollable.ensureVisible(
+        buttonContext,
+        // Put the top of the button at ~82% down the screen, leaving room for
+        // the rest of the button plus a comfortable margin below it. Landing
+        // it exactly at the bottom edge is what made it look cut off.
+        alignment: 0.82,
+        duration: reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 380),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    if (reduceMotion) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => reveal());
+    } else {
+      _submitRevealTimer = Timer(
+        // Slightly longer than the 300 ms field fold-out.
+        const Duration(milliseconds: 340),
+        () {
+          if (mounted) reveal();
+        },
+      );
+    }
   }
 
   void _submit(AuthState state) {
@@ -159,6 +209,13 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     if (!_formKey.currentState!.validate()) {
       // A tiny physical cue that something needs attention.
       unawaited(HapticFeedback.mediumImpact());
+      return;
+    }
+
+    // Signing up without accepting the legal documents is not allowed.
+    if (!_isSignIn && !_acceptedTerms) {
+      unawaited(HapticFeedback.mediumImpact());
+      setState(() => _showTermsError = true);
       return;
     }
 
@@ -194,6 +251,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
         _formKey = GlobalKey<FormState>();
         _passwordController.clear();
         _obscurePassword = true;
+        _acceptedTerms = false;
+        _showTermsError = false;
         _selectedGender = null;
         _feedback = 'Account created. Sign in to continue.';
         _feedbackIsError = false;
@@ -219,9 +278,10 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
   // ── Build ───────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hero = MamaHeroColors(isDark: isDark);
-    final formColors = _AuthFormColors(isDark: isDark);
+    // Both palettes come from the theme, so Material can blend them during
+    // the light <-> dark animation instead of snapping.
+    final hero = context.heroColors;
+    final formColors = _AuthFormColors(Theme.of(context).colorScheme);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       // The page is deep green in both themes, so status and navigation bar
@@ -440,14 +500,25 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                       return null;
                     },
                   ),
+
+                  // The legal agreement sits directly above the submit
+                  // button, so it is the last thing read before creating the
+                  // account. Sign-in does not need it.
+                  if (!_isSignIn) ...[
+                    const SizedBox(height: 14),
+                    _buildTermsRow(colors),
+                  ],
                   const SizedBox(height: 22),
 
-                  _GradientButton(
-                    label: _isSignIn ? 'Sign in' : 'Create account',
-                    busyLabel: _isSignIn ? 'Signing in' : 'Creating account',
-                    busy: state.busy,
-                    isDark: colors.isDark,
-                    onPressed: () => _submit(state),
+                  KeyedSubtree(
+                    key: _submitKey,
+                    child: _GradientButton(
+                      label: _isSignIn ? 'Sign in' : 'Create account',
+                      busyLabel: _isSignIn ? 'Signing in' : 'Creating account',
+                      busy: state.busy,
+                      isDark: colors.isDark,
+                      onPressed: () => _submit(state),
+                    ),
                   ),
                 ],
               ),
@@ -479,6 +550,132 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
       curve: Curves.easeOutCubic,
       alignment: Alignment.topCenter,
       child: note,
+    );
+  }
+
+  void _openLegal({
+    required String title,
+    required String assetPath,
+    required String externalUrl,
+  }) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => LegalDocumentPage(
+          title: title,
+          assetPath: assetPath,
+          externalUrl: externalUrl,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTermsRow(_AuthFormColors colors) {
+    final scheme = Theme.of(context).colorScheme;
+    final linkStyle = TextStyle(
+      color: scheme.primary,
+      fontWeight: FontWeight.w700,
+      decoration: TextDecoration.underline,
+      decorationColor: scheme.primary.withValues(alpha: 0.5),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Semantics(
+                label: 'I have read and agree to the Terms of Use and Privacy Policy',
+                child: Checkbox(
+                  value: _acceptedTerms,
+                  onChanged: (value) {
+                    unawaited(HapticFeedback.selectionClick());
+                    setState(() {
+                      _acceptedTerms = value ?? false;
+                      if (_acceptedTerms) _showTermsError = false;
+                    });
+                  },
+                  activeColor: colors.accent,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 9),
+                  child: Text.rich(
+                    TextSpan(
+                      style: TextStyle(
+                        color: colors.muted,
+                        fontSize: 12.5,
+                        height: 1.45,
+                      ),
+                      children: [
+                        const TextSpan(text: 'I have read and agree to the '),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.baseline,
+                          baseline: TextBaseline.alphabetic,
+                          child: GestureDetector(
+                            onTap: () => _openLegal(
+                              title: 'Terms of Use',
+                              assetPath: 'assets/legal/terms_of_use.md',
+                              externalUrl: 'https://helpmum.org/terms',
+                            ),
+                            child: Text('Terms of Use', style: linkStyle),
+                          ),
+                        ),
+                        const TextSpan(text: ' and '),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.baseline,
+                          baseline: TextBaseline.alphabetic,
+                          child: GestureDetector(
+                            onTap: () => _openLegal(
+                              title: 'Privacy Policy',
+                              assetPath: 'assets/legal/privacy_policy.md',
+                              externalUrl: 'https://helpmum.org/privacy',
+                            ),
+                            child: Text('Privacy Policy', style: linkStyle),
+                          ),
+                        ),
+                        const TextSpan(text: '.'),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topLeft,
+            child: _showTermsError && !_acceptedTerms
+                ? Padding(
+                    padding: const EdgeInsets.only(left: 34, top: 4),
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        'Please accept the Terms of Use and Privacy Policy.',
+                        style: TextStyle(
+                          color: scheme.error,
+                          fontSize: 12,
+                          height: 1.35,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
     );
   }
 
@@ -567,6 +764,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
             return null;
           },
         ),
+        // Country is the last sign-up field and Email follows in the outer
+        // column, so this spacer keeps the same 14 px rhythm between them.
         const SizedBox(height: 14),
       ],
     );
@@ -632,7 +831,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       border: border(colors.fieldBorder),
       enabledBorder: border(colors.fieldBorder),
-      focusedBorder: border(scheme.primary, 1.6),
+      focusedBorder: border(colors.accent, 1.6),
       errorBorder: border(scheme.error.withValues(alpha: 0.65)),
       focusedErrorBorder: border(scheme.error, 1.6),
       errorStyle: baseText.copyWith(
@@ -654,7 +853,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
         final color = states.contains(WidgetState.error)
             ? scheme.error
             : states.contains(WidgetState.focused)
-            ? scheme.primary
+            ? colors.accent
             : colors.muted;
         return baseText.copyWith(
           color: color,
@@ -923,18 +1122,15 @@ class _ModeTabs extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final selectedGradient = colors.isDark
-        ? const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF4ADE9B), Color(0xFF2FCB8C)],
-          )
-        : const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF0F8A62), Color(0xFF0B7A55)],
-          );
-    final selectedInk = colors.isDark ? const Color(0xFF04251C) : Colors.white;
+    // The selected tab uses the same warm berry as the primary button. It is
+    // the opposite of green on the colour wheel, so it reads clearly against
+    // both the emerald page and the neutral form card.
+    const selectedGradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [MamaColors.berry, MamaColors.berryDeep],
+    );
+    final selectedInk = colors.onAction;
 
     return Container(
       height: 48,
@@ -1139,16 +1335,15 @@ class _GradientButton extends StatefulWidget {
 
 class _GradientButtonState extends State<_GradientButton>
     with SingleTickerProviderStateMixin {
-  static const _darkInk = Color(0xFF04251C);
-
   late final AnimationController _sheen;
   bool _pressed = false;
 
-  List<Color> get _gradient => widget.isDark
-      ? const [Color(0xFF4ADE9B), Color(0xFF2FCB8C)]
-      : const [Color(0xFF0F8A62), Color(0xFF0B7A55)];
+  // Warm berry instead of another green: the page around the card is already
+  // deep emerald, so this gives the action a clear, complementary contrast.
+  List<Color> get _gradient =>
+      const [MamaColors.berry, MamaColors.berryDeep];
 
-  Color get _onGradient => widget.isDark ? _darkInk : Colors.white;
+  Color get _onGradient => Colors.white;
 
   @override
   void initState() {
@@ -1306,29 +1501,15 @@ class _CardFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          Icons.shield_outlined,
-          size: 13,
-          color: scheme.onSurfaceVariant.withValues(alpha: 0.75),
-        ),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            'Your details are only used to personalise your care.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 11,
-              height: 1.4,
-              color: colors.muted,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
+    return Text(
+      'Your details are only used to personalise your care.',
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: 11,
+        height: 1.4,
+        color: colors.muted,
+        fontWeight: FontWeight.w500,
+      ),
     );
   }
 }
@@ -1362,14 +1543,13 @@ class _AuthBackdrop extends StatelessWidget {
         ),
 
         // A whisper of a veil keeps white body copy comfortable to read on
-        // the brighter top of the light-mode gradient. Dark mode is already
-        // deep enough, so it leaves it alone.
-        if (!palette.isDark)
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.08),
-            ),
+        // the brighter top of the gradient. It is constant (not switched by
+        // brightness) so the veil itself cannot pop during a theme change.
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.06),
           ),
+        ),
 
         // Two thin, almost invisible rings add an editorial sense of depth
         // without competing with the content.
@@ -1496,14 +1676,16 @@ class _Glow extends StatelessWidget {
 /// notes stay in step in both themes. This is the only "design system" this
 /// one screen needs.
 class _AuthFormColors {
-  const _AuthFormColors({required this.isDark});
+  const _AuthFormColors(this.scheme);
 
-  final bool isDark;
+  /// Comes straight from the theme, so every colour below is interpolated for
+  /// free while Material animates between light and dark.
+  final ColorScheme scheme;
 
-  /// The form sheet: pure white in light mode, soft green-charcoal in dark.
-  List<Color> get card => isDark
-      ? const [Color(0xFF16211C), Color(0xFF0F1713)]
-      : const [Color(0xFFFFFFFF), Color(0xFFF8FBF9)];
+  bool get isDark => scheme.brightness == Brightness.dark;
+
+  /// The form sheet: off-white in light mode, charcoal in dark.
+  List<Color> get card => [scheme.surface, scheme.surfaceContainerLow];
 
   /// The 1px gradient edge that catches the light.
   List<Color> get cardEdge => isDark
@@ -1511,24 +1693,22 @@ class _AuthFormColors {
           Colors.white.withValues(alpha: 0.22),
           Colors.white.withValues(alpha: 0.06),
         ]
-      : [
-          Colors.white.withValues(alpha: 0.78),
-          Colors.white.withValues(alpha: 0.20),
-        ];
+      : [Colors.white, scheme.outlineVariant];
 
-  Color get fieldFill =>
-      isDark ? const Color(0xFF1C2822) : const Color(0xFFF3F7F4);
-  Color get fieldBorder =>
-      isDark ? const Color(0xFF2B3A33) : const Color(0xFFE2ECE7);
-  Color get ink => isDark ? const Color(0xFFE9F4EF) : const Color(0xFF122018);
-  Color get muted => isDark ? const Color(0xFF9DB0A7) : const Color(0xFF62716A);
-  Color get accent =>
-      isDark ? const Color(0xFF4ADE9B) : const Color(0xFF0B7A55);
-  Color get tabTrack =>
-      isDark ? const Color(0xFF1A2520) : const Color(0xFFEFF4F1);
-  Color get tabTrackBorder =>
-      isDark ? const Color(0xFF26332D) : const Color(0xFFE0E9E4);
-  Color get menu => isDark ? const Color(0xFF1C2822) : Colors.white;
+  Color get fieldFill => scheme.surfaceContainer;
+  Color get fieldBorder => scheme.outlineVariant;
+  Color get ink => scheme.onSurface;
+  Color get muted => scheme.onSurfaceVariant;
+
+  /// The primary accent is the warm berry, not another green.
+  Color get accent => MamaColors.berry;
+  List<Color> get actionGradient =>
+      const [MamaColors.berry, MamaColors.berryDeep];
+  Color get onAction => Colors.white;
+
+  Color get tabTrack => scheme.surfaceContainer;
+  Color get tabTrackBorder => scheme.outlineVariant;
+  Color get menu => scheme.surface;
   Color get success =>
       isDark ? const Color(0xFF6EE7B7) : const Color(0xFF0B7A55);
   Color get successFill =>

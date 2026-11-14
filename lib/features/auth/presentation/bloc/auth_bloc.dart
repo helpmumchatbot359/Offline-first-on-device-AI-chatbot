@@ -26,11 +26,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   Future<void> _onStarted(AuthStarted event, Emitter<AuthState> emit) async {
     try {
       final hasSession = await _repo.hasSession();
+      final user = hasSession ? await _repo.currentUser() : null;
       emit(
         state.copyWith(
           status: hasSession
               ? AuthStatus.authenticated
               : AuthStatus.unauthenticated,
+          displayName: user?.name,
+          email: user?.email,
         ),
       );
     } catch (_) {
@@ -53,7 +56,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       // No error message here: the auth screen reacts to `justSignedUp`
       // by switching to the sign-in tab with a calm success note.
       emit(
-        state.copyWith(status: AuthStatus.unauthenticated, justSignedUp: true),
+        state.copyWith(
+          status: AuthStatus.unauthenticated,
+          justSignedUp: true,
+          displayName: event.username,
+          email: event.email,
+        ),
       );
     } on AuthException catch (e) {
       emit(state.copyWith(error: e.message));
@@ -67,7 +75,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(state.copyWith(busy: true, error: null));
     try {
       await _repo.signIn(email: event.email, password: event.password);
-      emit(state.copyWith(status: AuthStatus.authenticated));
+      final user = await _repo.currentUser();
+      emit(
+        state.copyWith(
+          status: AuthStatus.authenticated,
+          displayName: user?.name,
+          email: user?.email ?? event.email,
+        ),
+      );
     } on AuthException catch (e) {
       emit(state.copyWith(error: e.message));
     } catch (_) {

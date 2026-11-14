@@ -524,7 +524,7 @@ class TelemetryRecorder {
     Map<String, Object?> responseMetadata = const {},
   }) {
     final metadata = <String, Object?>{
-      if (errorStage != null) 'error_stage': errorStage,
+      'error_stage': ?errorStage,
       ...responseMetadata,
     };
     if (metadata['tool_used'] is! bool) {

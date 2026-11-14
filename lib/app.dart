@@ -62,13 +62,15 @@ class MamaApp extends StatelessWidget {
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
           themeMode: themeState.themeMode,
-          // Light <-> dark now blends instead of snapping. A short, eased
-          // fade feels premium and avoids a harsh flash.
-          themeAnimationDuration: const Duration(milliseconds: 320),
-          themeAnimationCurve: Curves.easeOutCubic,
+          // Light <-> dark now blends instead of snapping. A slightly longer,
+          // eased fade gives every surface (including the custom green hero
+          // screens) time to cross-fade instead of flashing.
+          themeAnimationDuration: const Duration(milliseconds: 480),
+          themeAnimationCurve: Curves.easeInOutCubic,
           home: AuthGate(
             chatRepository: chatRepository,
             modelSetupService: modelSetupService,
+            tokenStorage: tokenStorage,
           ),
         ),
       ),
@@ -81,10 +83,12 @@ class AuthGate extends StatelessWidget {
     super.key,
     required this.chatRepository,
     required this.modelSetupService,
+    required this.tokenStorage,
   });
 
   final ChatRepository chatRepository;
   final ModelSetupService modelSetupService;
+  final TokenStorage tokenStorage;
 
   @override
   Widget build(BuildContext context) {
@@ -128,7 +132,9 @@ class AuthGate extends StatelessWidget {
                       ChatBloc(chatRepository)..add(const ChatStarted()),
                 ),
                 BlocProvider(
-                  create: (_) => OfflineSetupCubit(modelSetupService)..check(),
+                  create: (_) =>
+                      OfflineSetupCubit(modelSetupService, tokenStorage)
+                        ..check(),
                 ),
               ],
               child: const ChatPage(),

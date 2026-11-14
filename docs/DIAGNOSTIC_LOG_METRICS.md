@@ -291,13 +291,13 @@ The backend's "diagnostics table" can therefore answer:
 5. Open a second terminal and find the log files:
 
    ```powershell
-   adb shell run-as com.example.mama_ai ls app_flutter/diagnostic_logs
+   adb shell run-as com.helpmum.mamaBot ls app_flutter/diagnostic_logs
    ```
 
 6. Print the newest file:
 
    ```powershell
-   adb shell run-as com.example.mama_ai cat app_flutter/diagnostic_logs/diagnostics-2026-11-03.jsonl
+   adb shell run-as com.helpmum.mamaBot cat app_flutter/diagnostic_logs/diagnostics-2026-11-03.jsonl
    ```
 
 7. Look for a line whose `logType` is `inference_measurement`. Its `metrics`

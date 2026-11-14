@@ -277,8 +277,8 @@ saved + acknowledged              -> it reached the telemetry table
 5. Read the diagnostic log:
 
    ```powershell
-   adb shell run-as com.example.mama_ai ls app_flutter/diagnostic_logs
-   adb shell run-as com.example.mama_ai cat app_flutter/diagnostic_logs/diagnostics-2026-11-03.jsonl
+   adb shell run-as com.helpmum.mamaBot ls app_flutter/diagnostic_logs
+   adb shell run-as com.helpmum.mamaBot cat app_flutter/diagnostic_logs/diagnostics-2026-11-03.jsonl
    ```
 
 6. Search for `telemetry_event_saved`. You want a line like:

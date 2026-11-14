@@ -1,4 +1,4 @@
-package com.example.mama_ai;
+package com.helpmum.mamaBot;
 
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;

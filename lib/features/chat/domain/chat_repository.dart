@@ -17,6 +17,15 @@ abstract class ChatRepository {
   /// Removes one conversation and all of its messages.
   Future<void> deleteChat(String chatId);
 
+  /// Gives a conversation a name chosen by the person. The first question is
+  /// still used when no custom name exists.
+  Future<void> renameChat(String chatId, String title);
+
+  /// Copies the open conversation into a brand-new chat and opens it, so the
+  /// person can continue from the same context without touching the original.
+  /// Returns the id of the new chat.
+  Future<String> branchChat();
+
   /// Emits the turn many times: first empty, then growing as words arrive,
   /// finally complete. Lets the screen show the answer being typed.
   Stream<ChatTurn> sendMessage(String text, {required bool isOnline});

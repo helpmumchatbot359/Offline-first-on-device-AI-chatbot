@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/selection_toolbar.dart';
 import '../../domain/chat_turn.dart';
 import '../bloc/chat_bloc.dart';
 import '../events/chat_event.dart';
@@ -56,6 +57,7 @@ class _UserBubble extends StatelessWidget {
           ),
           child: SelectableText(
             text,
+            contextMenuBuilder: buildMamaSelectionToolbar,
             style: TextStyle(color: c.onUserBubble, fontSize: 16, height: 1.4),
           ),
         ),
@@ -71,64 +73,48 @@ class _AiBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.chatColors;
-    final scheme = Theme.of(context).colorScheme;
     final bg = turn.isError ? c.errorBubble : c.aiBubble;
     final fg = turn.isError ? c.onErrorBubble : c.onAiBubble;
     final waiting = turn.isStreaming && turn.aiResponse.isEmpty;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CircleAvatar(
-          radius: 16,
-          // Neutral avatar in both themes. The tiny green heart is enough of
-          // a brand cue; a full green circle would add another loud surface.
-          backgroundColor: scheme.surfaceContainerHighest,
-          child: Icon(Icons.favorite_rounded, size: 16, color: scheme.primary),
-        ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.sizeOf(context).width * 0.8,
-                ),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(15, 11, 15, 11),
-                  decoration: BoxDecoration(
-                    color: bg,
-                    border: Border.all(color: c.aiBubbleBorder),
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(6),
-                      topRight: Radius.circular(20),
-                      bottomLeft: Radius.circular(20),
-                      bottomRight: Radius.circular(20),
-                    ),
-                  ),
-                  child: waiting
-                      ? _ThinkingIndicator(color: fg)
-                      : SelectableText(
-                          turn.aiResponse,
-                          style: TextStyle(
-                            color: fg,
-                            fontSize: 16,
-                            height: 1.4,
-                          ),
-                        ),
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(context).width * 0.86,
+            ),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(15, 11, 15, 11),
+              decoration: BoxDecoration(
+                color: bg,
+                border: Border.all(color: c.aiBubbleBorder),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(6),
+                  topRight: Radius.circular(20),
+                  bottomLeft: Radius.circular(20),
+                  bottomRight: Radius.circular(20),
                 ),
               ),
-              if (!waiting && !turn.isError)
-                Padding(
-                  padding: const EdgeInsets.only(left: 2, top: 4),
-                  child: _MetaRow(turn: turn),
-                ),
-            ],
+              child: waiting
+                  ? _ThinkingIndicator(color: fg)
+                  : SelectableText(
+                      turn.aiResponse,
+                      contextMenuBuilder: buildMamaSelectionToolbar,
+                      style: TextStyle(color: fg, fontSize: 16, height: 1.4),
+                    ),
+            ),
           ),
-        ),
-      ],
+          if (!waiting && !turn.isError)
+            Padding(
+              padding: const EdgeInsets.only(left: 2, top: 4),
+              child: _MetaRow(turn: turn),
+            ),
+        ],
+      ),
     );
   }
 }

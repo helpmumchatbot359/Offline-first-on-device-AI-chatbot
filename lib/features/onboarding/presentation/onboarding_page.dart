@@ -25,36 +25,36 @@ class OnboardingPage extends StatefulWidget {
 class _OnboardingPageState extends State<OnboardingPage> {
   final PageController _pageController = PageController();
   int _currentIndex = 0;
-  bool _imagesPrecached = false;
+  bool _precacheStarted = false;
+  bool _imagesReady = false;
 
   /// The copy is deliberately short enough to fit over the photo on a small
   /// phone. Each line break is intentional: it gives the headline the same
   /// poster-like rhythm as the reference design.
   static const List<OnboardingItem> _slides = [
     OnboardingItem(
-      imageAsset: 'assets/images/onboarding/guidance.jpg',
-      eyebrow: 'Expert guidance',
-      iconData: Icons.auto_awesome_rounded,
-      title: 'Expert answers,\nwhenever you\nneed them.',
-      description: 'Trusted advice on pregnancy, nutrition and newborn care.',
-      imageAlignment: Alignment(0, -0.22),
+      imageAsset: 'assets/images/onboarding/helpmum_adviser.jpg',
+      eyebrow: 'Here for you',
+      iconData: Icons.volunteer_activism_rounded,
+      title: 'Support for every\nstep of motherhood.',
+      description: 'Friendly guidance for pregnancy, birth and newborn care.',
+      imageAlignment: Alignment(0, -0.15),
     ),
     OnboardingItem(
-      imageAsset: 'assets/images/onboarding/offline.jpg',
-      eyebrow: 'Works offline',
-      iconData: Icons.offline_bolt_rounded,
-      title: 'Care that works,\neven when\nyou\'re offline.',
-      description:
-          'On-device answers that keep working when the network doesn\'t.',
+      imageAsset: 'assets/images/onboarding/helpmum_care_team.jpg',
+      eyebrow: 'A caring team',
+      iconData: Icons.health_and_safety_rounded,
+      title: 'Care and answers\nyou can trust.',
+      description: 'HelpMum is here to support you and your little one.',
       imageAlignment: Alignment(0, -0.12),
     ),
     OnboardingItem(
-      imageAsset: 'assets/images/onboarding/safety.jpg',
-      eyebrow: 'Vaccines & safety',
-      iconData: Icons.health_and_safety_rounded,
-      title: 'Every milestone,\nsafely on\ntrack.',
+      imageAsset: 'assets/images/onboarding/child_care.png',
+      eyebrow: 'Care for your child',
+      iconData: Icons.child_care_rounded,
+      title: 'A healthier start\nfor every child.',
       description:
-          'Vaccination reminders and early warning signs, all in one place.',
+          'Get trusted guidance on your child’s health, growth and wellbeing.',
       imageAlignment: Alignment(0, -0.10),
     ),
   ];
@@ -63,13 +63,33 @@ class _OnboardingPageState extends State<OnboardingPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    // Decode the next photos while the person is still reading this one, so
-    // swiping never shows a blank frame.
-    if (_imagesPrecached) return;
-    _imagesPrecached = true;
-    for (final slide in _slides) {
-      unawaited(precacheImage(AssetImage(slide.imageAsset), context));
-    }
+    // Start loading all photos while the first slide is visible. Slide
+    // changes stay disabled until they are ready.
+    if (_precacheStarted) return;
+    _precacheStarted = true;
+    unawaited(_precacheSlides());
+  }
+
+  Future<void> _precacheSlides() async {
+    // Decode each photo at roughly the size it will be drawn instead of its
+    // full 1600x2400 camera resolution. That is the difference between a
+    // visible "empty green" pause and a photo that is already there.
+    final cacheWidth = _decodeWidth(context);
+    await Future.wait(
+      _slides.map((slide) async {
+        try {
+          await precacheImage(
+            ResizeImage(AssetImage(slide.imageAsset), width: cacheWidth),
+            context,
+          );
+        } catch (_) {
+          // Keep onboarding usable if a photo is missing; _HeroImage has a
+          // fallback icon for that case.
+        }
+      }),
+    );
+    if (!mounted) return;
+    setState(() => _imagesReady = true);
   }
 
   @override
@@ -110,8 +130,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final palette = MamaHeroColors(isDark: isDark);
+    // Read from the theme so the green cross-fades smoothly when the person
+    // switches between light and dark instead of flashing.
+    final palette = context.heroColors;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       // The page is dark green in both themes, so the status-bar and
@@ -143,6 +164,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
                     Expanded(
                       child: PageView.builder(
                         controller: _pageController,
+                        physics: _imagesReady
+                            ? const PageScrollPhysics()
+                            : const NeverScrollableScrollPhysics(),
                         itemCount: _slides.length,
                         onPageChanged: (index) {
                           unawaited(HapticFeedback.selectionClick());
@@ -156,6 +180,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       count: _slides.length,
                       currentIndex: _currentIndex,
                       isLast: _currentIndex == _slides.length - 1,
+                      enabled: _imagesReady,
                       onContinue: _continue,
                     ),
                   ],
@@ -299,7 +324,20 @@ class _HeroImage extends StatelessWidget {
           slide.imageAsset,
           fit: BoxFit.cover,
           alignment: slide.imageAlignment,
+          // Match the size used by precacheImage so the work is reused and
+          // the photo appears as soon as its first frame is decoded.
+          cacheWidth: _decodeWidth(context),
+          gaplessPlayback: true,
           semanticLabel: slide.title.replaceAll('\n', ' '),
+          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+            if (wasSynchronouslyLoaded) return child;
+            return AnimatedOpacity(
+              opacity: frame == null ? 0 : 1,
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOut,
+              child: child,
+            );
+          },
           errorBuilder: (context, error, stackTrace) => ColoredBox(
             color: palette.mid,
             child: Center(
@@ -378,21 +416,16 @@ class _SlideCopy extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
             border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(slide.iconData, size: 14, color: const Color(0xFFC9FBE2)),
-              const SizedBox(width: 6),
-              Text(
-                slide.eyebrow.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.1,
-                  color: Color(0xFFE6FFF3),
-                ),
-              ),
-            ],
+          // Just the label now: the little icon beside it was decorative
+          // noise and added nothing to the meaning.
+          child: Text(
+            slide.eyebrow.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+              color: Color(0xFFE6FFF3),
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -444,12 +477,14 @@ class _BottomBar extends StatelessWidget {
     required this.count,
     required this.currentIndex,
     required this.isLast,
+    required this.enabled,
     required this.onContinue,
   });
 
   final int count;
   final int currentIndex;
   final bool isLast;
+  final bool enabled;
   final VoidCallback onContinue;
 
   @override
@@ -469,8 +504,10 @@ class _BottomBar extends StatelessWidget {
             curve: Curves.easeOutCubic,
             child: _CtaButton(
               key: ValueKey(isLast),
-              label: isLast ? 'Get started' : 'Next',
-              onPressed: onContinue,
+              label: enabled
+                  ? (isLast ? 'Get started' : 'Next')
+                  : 'Loading photos…',
+              onPressed: enabled ? onContinue : null,
             ),
           ),
         ],
@@ -515,7 +552,7 @@ class _CtaButton extends StatelessWidget {
   const _CtaButton({super.key, required this.label, required this.onPressed});
 
   final String label;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   static const _ink = Color(0xFF033D2B);
   static const _radius = BorderRadius.all(Radius.circular(999));
@@ -524,6 +561,7 @@ class _CtaButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
+      enabled: onPressed != null,
       label: label,
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -671,4 +709,18 @@ class OnboardingItem {
 
   /// Where the photo should be anchored when `BoxFit.cover` crops it.
   final Alignment imageAlignment;
+}
+
+/// The width a photo should be decoded at. The source files are 1600 px wide
+/// (and 2400 px tall); decoding them at full size on a phone is slow and uses
+/// a lot of memory. Screen width is all we ever actually draw.
+int _decodeWidth(BuildContext context) {
+  final media = MediaQuery.maybeOf(context);
+  if (media == null) return 960;
+  // 0.85x the physical width is still sharp for a full-bleed photo but cuts
+  // the decoded pixel count noticeably, so the first frame arrives sooner.
+  final wanted = (media.size.width * media.devicePixelRatio * 0.85).round();
+  if (wanted < 480) return 480;
+  if (wanted > 1280) return 1280;
+  return wanted;
 }

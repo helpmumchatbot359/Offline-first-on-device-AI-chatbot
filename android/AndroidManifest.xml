@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.mama_ai">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.helpmum.mamaBot">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="35" />
     <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="LiteRT-LM verification">
         <uses-native-library android:name="libvndksupport.so" android:required="false" />

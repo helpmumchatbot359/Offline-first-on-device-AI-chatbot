@@ -48,6 +48,21 @@ class ChatDeleted extends ChatEvent {
   List<Object?> get props => [chatId];
 }
 
+/// The person gave a conversation a name from the three-dot menu.
+class ChatRenamed extends ChatEvent {
+  const ChatRenamed(this.chatId, this.title);
+  final String chatId;
+  final String title;
+  @override
+  List<Object?> get props => [chatId, title];
+}
+
+/// The person chose "Branch in new chat": copy this conversation into a fresh
+/// chat and continue there.
+class ChatBranched extends ChatEvent {
+  const ChatBranched();
+}
+
 /// Internal: the phone went online/offline.
 class ConnectivityChanged extends ChatEvent {
   const ConnectivityChanged(this.isOnline);

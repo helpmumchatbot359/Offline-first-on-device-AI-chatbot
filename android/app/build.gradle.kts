@@ -39,13 +39,13 @@ val prepareToolContractAsset = tasks.register<Copy>("prepareToolContractAsset") 
 }
 
 android {
-    namespace = "com.example.mama_ai"
+    namespace = "com.helpmum.mamaBot"
     compileSdk = 36
     buildToolsVersion = "35.0.0"
     ndkVersion = flutter.ndkVersion
 
     defaultConfig {
-        applicationId = "com.example.mama_ai"
+        applicationId = "com.helpmum.mamaBot"
         minSdk = 26
         targetSdk = 36
         versionCode = flutter.versionCode

@@ -70,6 +70,12 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<List<ChatSession>> loadChatSessions() async {
     final chats = await localDataSource.getChats();
+    Map<String, String> customTitles = const {};
+    try {
+      customTitles = await tokenStorage.readChatTitles();
+    } catch (_) {
+      // A storage problem must never hide the conversations themselves.
+    }
     final sessions = <ChatSession>[];
 
     for (final chat in chats) {
@@ -77,10 +83,13 @@ class ChatRepositoryImpl implements ChatRepository {
       if (count == 0) continue; // a chat with no messages is not worth showing
 
       final first = await localDataSource.getFirstMessage(chat.chatId);
+      final custom = customTitles[chat.chatId]?.trim();
       sessions.add(
         ChatSession(
           id: chat.chatId,
-          title: _shortTitle(first?.message),
+          title: (custom != null && custom.isNotEmpty)
+              ? _shortTitle(custom, limit: 80)
+              : _shortTitle(first?.message),
           updatedAt: chat.updatedAt,
           messageCount: count,
         ),
@@ -98,6 +107,7 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<void> deleteChat(String chatId) async {
     await localDataSource.deleteChat(chatId);
+    await tokenStorage.deleteChatTitle(chatId);
 
     // If the deleted chat was the open one, move to a fresh blank chat.
     final active = await tokenStorage.activeChatId();
@@ -106,12 +116,43 @@ class ChatRepositoryImpl implements ChatRepository {
     }
   }
 
+  @override
+  Future<void> renameChat(String chatId, String title) async {
+    final clean = title.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (clean.isEmpty) return;
+    await tokenStorage.saveChatTitle(chatId, clean);
+  }
+
+  @override
+  Future<String> branchChat() async {
+    final sourceId = await tokenStorage.activeChatId();
+    final sourceMessages = await localDataSource.getMessages(sourceId);
+
+    // A branch is a real new chat: it gets its own id and its own copy of the
+    // conversation. The original is never changed.
+    final newId = await tokenStorage.startNewChat();
+    for (final message in sourceMessages) {
+      await localDataSource.saveMessage(
+        chatId: newId,
+        message: message.message,
+        aiResponse: message.aiResponse,
+        date: message.date,
+        // Pending rows upload to the backend, which gives the new chat the
+        // same context for the person's next question. Interrupted rows are
+        // kept locally only, exactly as they were before the branch.
+        syncState: message.syncState == 'pending' ? 'pending' : 'acknowledged',
+        source: message.source,
+      );
+    }
+    return newId;
+  }
+
   /// One-line title for the history drawer.
-  static String _shortTitle(String? text) {
+  static String _shortTitle(String? text, {int limit = 48}) {
     final clean = (text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
     if (clean.isEmpty) return 'New chat';
-    if (clean.length <= 48) return clean;
-    return '${clean.substring(0, 48).trimRight()}…';
+    if (clean.length <= limit) return clean;
+    return '${clean.substring(0, limit).trimRight()}…';
   }
 
   @override
@@ -721,8 +762,9 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<void> cancelGeneration() async {
     final stop = _stop;
-    if (stop != null && !stop.isCompleted)
+    if (stop != null && !stop.isCompleted) {
       stop.complete(); // 1) tell our own code
+    }
     _cloudCancel?.cancel(
       'stopped by user',
     ); //                 2) hang up the internet call
@@ -895,20 +937,20 @@ class OfflineRun {
     }
 
     return {
-      if (tokens != null) 'output_tokens': tokens,
+      'output_tokens': ?tokens,
       if (outputChars != null) 'output_chars': outputChars,
       'tool_used': toolUsed,
       'retrieved_passage_count': retrievedPassageCount ?? 0,
       'streamed': streamed,
       if (modelLoadMs != null) 'model_load_ms': modelLoadMs,
-      if (first != null) 'time_to_first_token_ms': first,
+      'time_to_first_token_ms': ?first,
       if (modelLoadMs != null && first != null)
         'time_to_first_token_from_request_ms': modelLoadMs! + first,
       if (first != null && last != null && last >= first)
         'stream_duration_ms': last - first,
       if (generationStart != null)
         'generation_duration_ms': clock.elapsedMilliseconds - generationStart,
-      if (tokensPerSecond != null) 'tokens_per_second': tokensPerSecond,
+      'tokens_per_second': ?tokensPerSecond,
     };
   }
 
