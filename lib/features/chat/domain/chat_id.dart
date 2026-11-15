@@ -1,7 +1,11 @@
-/// The server's history endpoint may prefix client generated chat IDs with
-/// `8-`. Treat `8-user-<uuid>` and `user-<uuid>` as the same conversation.
-String chatHistoryIdentity(String chatId) =>
-    chatId.startsWith('8-user-') ? chatId.substring(2) : chatId;
+/// The server's history endpoint may prefix client generated chat IDs with a
+/// numeric value. Treat `<number>-user-<uuid>` and `user-<uuid>` as one chat.
+String chatHistoryIdentity(String chatId) {
+  final match = RegExp(
+    r'^\d+-(user-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$',
+  ).firstMatch(chatId);
+  return match?.group(1) ?? chatId;
+}
 
 bool sameChatHistory(String left, String right) =>
     chatHistoryIdentity(left) == chatHistoryIdentity(right);
@@ -10,7 +14,9 @@ bool sameChatHistory(String left, String right) =>
 /// representations of one chat.
 List<String> chatHistoryIdAliases(String chatId) {
   final identity = chatHistoryIdentity(chatId);
-  return identity.startsWith('user-')
-      ? <String>{chatId, identity, '8-$identity'}.toList()
-      : <String>{chatId, identity}.toList();
+  final aliases = <String>{chatId, identity};
+  if (chatId == identity && identity.startsWith('user-')) {
+    aliases.add('8-$identity');
+  }
+  return aliases.toList();
 }
