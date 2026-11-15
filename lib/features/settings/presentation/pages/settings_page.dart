@@ -254,6 +254,41 @@ class SettingsPage extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
+                      ListTile(
+                        enabled: !auth.busy,
+                        leading: const Icon(Icons.logout_rounded),
+                        title: const Text('Sign out'),
+                        onTap: auth.busy
+                            ? null
+                            : () => _confirmSignOut(context),
+                      ),
+                    ],
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(4, 18, 4, 8),
+                  child: Text(
+                    'PERMANENT DELETION',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                      color: Colors.redAccent,
+                    ),
+                  ),
+                ),
+                Card(
+                  elevation: 0,
+                  margin: EdgeInsets.zero,
+                  color: scheme.surfaceContainerLow,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    side: BorderSide(
+                      color: scheme.error.withValues(alpha: 0.55),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
                       if (auth.error != null)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -290,44 +325,8 @@ class SettingsPage extends StatelessWidget {
                             ? null
                             : () => _confirmDeleteAccount(context),
                       ),
-                      Divider(
-                        height: 1,
-                        indent: 16,
-                        endIndent: 16,
-                        color: scheme.outlineVariant,
-                      ),
-                      ListTile(
-                        enabled: !auth.busy,
-                        leading: const Icon(Icons.logout_rounded),
-                        title: const Text('Sign out'),
-                        onTap: auth.busy
-                            ? null
-                            : () => _confirmSignOut(context),
-                      ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.lock_outline_rounded,
-                      size: 14,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        'Your chats are saved on this phone.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             );

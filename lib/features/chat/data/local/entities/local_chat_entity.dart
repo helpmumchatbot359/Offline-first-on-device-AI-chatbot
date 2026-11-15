@@ -9,6 +9,11 @@ class LocalChat {
   @Unique()
   String chatId;
 
+  /// Account that owns this local conversation. Empty for rows from older
+  /// app versions that predate per-account local history.
+  @Index()
+  String ownerId;
+
   String createdAt;
   String updatedAt;
 
@@ -18,6 +23,7 @@ class LocalChat {
   LocalChat({
     this.id = 0,
     required this.chatId,
+    this.ownerId = '',
     required this.createdAt,
     required this.updatedAt,
   });
@@ -29,6 +35,10 @@ class LocalChatMessage {
   int id = 0; // Local-only ID, never sent to backend
 
   String chatId;
+
+  /// Matches the owning conversation; empty on pre-migration rows.
+  @Index()
+  String ownerId;
   String message;
   String aiResponse;
   String date; // Original UTC time of the turn
@@ -44,6 +54,7 @@ class LocalChatMessage {
   LocalChatMessage({
     this.id = 0,
     required this.chatId,
+    this.ownerId = '',
     required this.message,
     required this.aiResponse,
     required this.date,

@@ -10,14 +10,23 @@ class ChatLocalDataSource {
   late final Box<LocalChat> _chatBox;
   late final Box<LocalChatMessage> _messageBox;
   late final Box<LocalTelemetryEvent> _telemetryBox;
+  String _ownerId = '';
 
-  Future<void> init() async {
+  Future<void> init({String ownerId = ''}) async {
     final docsDir = await getApplicationDocumentsDirectory();
+    _ownerId = ownerId;
     _store = await openStore(directory: p.join(docsDir.path, 'mama_ai_db'));
     _chatBox = _store.box<LocalChat>();
     _messageBox = _store.box<LocalChatMessage>();
     _telemetryBox = _store.box<LocalTelemetryEvent>();
   }
+
+  /// Changes which account's local rows and sync queue are visible.
+  void setAccountOwner(String ownerId) {
+    _ownerId = ownerId;
+  }
+
+  String get accountOwnerId => _ownerId;
 
   // --- Chat Storage ---
 
@@ -34,15 +43,22 @@ class ChatLocalDataSource {
     chatQuery.close();
 
     if (chat == null) {
-      chat = LocalChat(chatId: chatId, createdAt: date, updatedAt: date);
+      chat = LocalChat(
+        chatId: chatId,
+        ownerId: _ownerId,
+        createdAt: date,
+        updatedAt: date,
+      );
       _chatBox.put(chat);
-    } else if (date.compareTo(chat.updatedAt) > 0) {
-      chat.updatedAt = date;
+    } else {
+      _ensureChatOwner(chat);
+      if (date.compareTo(chat.updatedAt) > 0) chat.updatedAt = date;
       _chatBox.put(chat);
     }
 
     final chatMessage = LocalChatMessage(
       chatId: chatId,
+      ownerId: _ownerId,
       message: message,
       aiResponse: aiResponse,
       date: date,
@@ -75,8 +91,14 @@ class ChatLocalDataSource {
     var chat = query.findFirst();
     query.close();
     if (chat == null) {
-      chat = LocalChat(chatId: chatId, createdAt: date, updatedAt: date);
+      chat = LocalChat(
+        chatId: chatId,
+        ownerId: _ownerId,
+        createdAt: date,
+        updatedAt: date,
+      );
     } else {
+      _ensureChatOwner(chat);
       if (date.compareTo(chat.updatedAt) > 0) chat.updatedAt = date;
     }
     _chatBox.put(chat);
@@ -93,6 +115,7 @@ class ChatLocalDataSource {
     final chat = _findOrCreateChat(chatId, date);
     final row = LocalChatMessage(
       chatId: chatId,
+      ownerId: _ownerId,
       message: message,
       aiResponse: '',
       date: date,
@@ -159,7 +182,11 @@ class ChatLocalDataSource {
   /// an answer that was cut off when Android closed the app.
   Future<void> recoverInterruptedTurns() async {
     final query = _messageBox
-        .query(LocalChatMessage_.syncState.equals(stateInProgress))
+        .query(
+          LocalChatMessage_.syncState
+              .equals(stateInProgress)
+              .and(LocalChatMessage_.ownerId.equals(_ownerId)),
+        )
         .build();
     final rows = query.find();
     query.close();
@@ -176,7 +203,11 @@ class ChatLocalDataSource {
 
   Future<List<LocalChatMessage>> getMessages(String chatId) async {
     final query = _messageBox
-        .query(LocalChatMessage_.chatId.equals(chatId))
+        .query(
+          LocalChatMessage_.chatId
+              .equals(chatId)
+              .and(LocalChatMessage_.ownerId.equals(_ownerId)),
+        )
         .order(LocalChatMessage_.date)
         .build();
     final results = query.find();
@@ -194,7 +225,11 @@ class ChatLocalDataSource {
     if (messages.isEmpty) return;
 
     final query = _messageBox
-        .query(LocalChatMessage_.chatId.equals(chatId))
+        .query(
+          LocalChatMessage_.chatId
+              .equals(chatId)
+              .and(LocalChatMessage_.ownerId.equals(_ownerId)),
+        )
         .build();
     final existing = query.find();
     query.close();
@@ -229,7 +264,7 @@ class ChatLocalDataSource {
   /// All saved conversations, newest activity first.
   Future<List<LocalChat>> getChats() async {
     final query = _chatBox
-        .query()
+        .query(LocalChat_.ownerId.equals(_ownerId))
         .order(LocalChat_.updatedAt, flags: Order.descending)
         .build();
     final results = query.find();
@@ -240,7 +275,11 @@ class ChatLocalDataSource {
   /// The first question of a chat. Used as its title in the history list.
   Future<LocalChatMessage?> getFirstMessage(String chatId) async {
     final query = _messageBox
-        .query(LocalChatMessage_.chatId.equals(chatId))
+        .query(
+          LocalChatMessage_.chatId
+              .equals(chatId)
+              .and(LocalChatMessage_.ownerId.equals(_ownerId)),
+        )
         .order(LocalChatMessage_.date)
         .build();
     final result = query.findFirst();
@@ -250,7 +289,11 @@ class ChatLocalDataSource {
 
   Future<int> countMessages(String chatId) async {
     final query = _messageBox
-        .query(LocalChatMessage_.chatId.equals(chatId))
+        .query(
+          LocalChatMessage_.chatId
+              .equals(chatId)
+              .and(LocalChatMessage_.ownerId.equals(_ownerId)),
+        )
         .build();
     final count = query.count();
     query.close();
@@ -260,7 +303,11 @@ class ChatLocalDataSource {
   /// Deletes the conversation row AND every message that belongs to it.
   Future<void> deleteChat(String chatId) async {
     final messageQuery = _messageBox
-        .query(LocalChatMessage_.chatId.equals(chatId))
+        .query(
+          LocalChatMessage_.chatId
+              .equals(chatId)
+              .and(LocalChatMessage_.ownerId.equals(_ownerId)),
+        )
         .build();
     final messageIds = messageQuery.find().map((m) => m.id).toList();
     messageQuery.close();
@@ -268,7 +315,13 @@ class ChatLocalDataSource {
       _messageBox.removeMany(messageIds);
     }
 
-    final chatQuery = _chatBox.query(LocalChat_.chatId.equals(chatId)).build();
+    final chatQuery = _chatBox
+        .query(
+          LocalChat_.chatId
+              .equals(chatId)
+              .and(LocalChat_.ownerId.equals(_ownerId)),
+        )
+        .build();
     final chat = chatQuery.findFirst();
     chatQuery.close();
     if (chat != null) {
@@ -278,14 +331,63 @@ class ChatLocalDataSource {
 
   /// Removes all locally stored chats and queued telemetry for account deletion.
   Future<void> clearAccountData() async {
-    _messageBox.removeAll();
-    _chatBox.removeAll();
-    _telemetryBox.removeAll();
+    if (_ownerId.isEmpty) return;
+
+    final messages = _messageBox
+        .query(LocalChatMessage_.ownerId.equals(_ownerId))
+        .build();
+    final messageIds = messages.find().map((message) => message.id).toList();
+    messages.close();
+    if (messageIds.isNotEmpty) _messageBox.removeMany(messageIds);
+
+    final chats = _chatBox.query(LocalChat_.ownerId.equals(_ownerId)).build();
+    final chatIds = chats.find().map((chat) => chat.id).toList();
+    chats.close();
+    if (chatIds.isNotEmpty) _chatBox.removeMany(chatIds);
+
+    final telemetry = _telemetryBox
+        .query(LocalTelemetryEvent_.ownerId.equals(_ownerId))
+        .build();
+    final telemetryIds = telemetry.find().map((event) => event.id).toList();
+    telemetry.close();
+    if (telemetryIds.isNotEmpty) _telemetryBox.removeMany(telemetryIds);
+  }
+
+  /// Claims legacy local rows only after the signed-in account's server
+  /// confirms that the same chat ID belongs to it.
+  Future<void> claimUnassignedChat(String chatId) async {
+    if (_ownerId.isEmpty) return;
+
+    final chatQuery = _chatBox.query(LocalChat_.chatId.equals(chatId)).build();
+    final chat = chatQuery.findFirst();
+    chatQuery.close();
+    if (chat == null || chat.ownerId.isNotEmpty) return;
+
+    chat.ownerId = _ownerId;
+    _chatBox.put(chat);
+
+    final messageQuery = _messageBox
+        .query(
+          LocalChatMessage_.chatId
+              .equals(chatId)
+              .and(LocalChatMessage_.ownerId.equals('')),
+        )
+        .build();
+    final messages = messageQuery.find();
+    messageQuery.close();
+    for (final message in messages) {
+      message.ownerId = _ownerId;
+    }
+    if (messages.isNotEmpty) _messageBox.putMany(messages);
   }
 
   Future<List<LocalChatMessage>> getPendingMessages() async {
     final query = _messageBox
-        .query(LocalChatMessage_.syncState.equals('pending'))
+        .query(
+          LocalChatMessage_.syncState
+              .equals('pending')
+              .and(LocalChatMessage_.ownerId.equals(_ownerId)),
+        )
         .order(LocalChatMessage_.id)
         .build();
     final results = query.find();
@@ -305,7 +407,11 @@ class ChatLocalDataSource {
 
   Future<int> countPendingMessages() async {
     final query = _messageBox
-        .query(LocalChatMessage_.syncState.equals('pending'))
+        .query(
+          LocalChatMessage_.syncState
+              .equals('pending')
+              .and(LocalChatMessage_.ownerId.equals(_ownerId)),
+        )
         .build();
     final n = query.count();
     query.close();
@@ -315,6 +421,7 @@ class ChatLocalDataSource {
   // --- Telemetry Storage ---------------------------------------------------
 
   Future<void> saveTelemetryEvent(LocalTelemetryEvent event) async {
+    event.ownerId = _ownerId;
     _telemetryBox.put(event);
   }
 
@@ -323,6 +430,9 @@ class ChatLocalDataSource {
   /// older build before uploading them.
   Future<void> saveTelemetryEvents(List<LocalTelemetryEvent> events) async {
     if (events.isEmpty) return;
+    for (final event in events) {
+      if (event.ownerId.isEmpty) event.ownerId = _ownerId;
+    }
     _telemetryBox.putMany(events);
   }
 
@@ -331,7 +441,11 @@ class ChatLocalDataSource {
     int? limit,
   }) async {
     final query = _telemetryBox
-        .query(LocalTelemetryEvent_.syncState.equals('pending'))
+        .query(
+          LocalTelemetryEvent_.syncState
+              .equals('pending')
+              .and(LocalTelemetryEvent_.ownerId.equals(_ownerId)),
+        )
         .order(LocalTelemetryEvent_.id)
         .build();
     final results = query.find();
@@ -341,7 +455,11 @@ class ChatLocalDataSource {
 
   Future<int> countPendingTelemetry() async {
     final query = _telemetryBox
-        .query(LocalTelemetryEvent_.syncState.equals('pending'))
+        .query(
+          LocalTelemetryEvent_.syncState
+              .equals('pending')
+              .and(LocalTelemetryEvent_.ownerId.equals(_ownerId)),
+        )
         .build();
     final n = query.count();
     query.close();
@@ -352,7 +470,11 @@ class ChatLocalDataSource {
   /// 'rejected'). Used by the diagnostics audit to show the real queue state.
   Future<int> countTelemetryByState(String syncState) async {
     final query = _telemetryBox
-        .query(LocalTelemetryEvent_.syncState.equals(syncState))
+        .query(
+          LocalTelemetryEvent_.syncState
+              .equals(syncState)
+              .and(LocalTelemetryEvent_.ownerId.equals(_ownerId)),
+        )
         .build();
     final n = query.count();
     query.close();
@@ -393,5 +515,14 @@ class ChatLocalDataSource {
       event.syncState = 'rejected';
     }
     _telemetryBox.putMany(events.whereType<LocalTelemetryEvent>().toList());
+  }
+
+  void _ensureChatOwner(LocalChat chat) {
+    if (chat.ownerId.isNotEmpty && chat.ownerId != _ownerId) {
+      throw StateError('This conversation belongs to a different account.');
+    }
+    if (chat.ownerId.isEmpty && _ownerId.isNotEmpty) {
+      chat.ownerId = _ownerId;
+    }
   }
 }

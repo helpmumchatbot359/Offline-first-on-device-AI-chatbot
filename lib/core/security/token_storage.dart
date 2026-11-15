@@ -20,6 +20,10 @@ class TokenStorage {
 
   final FlutterSecureStorage _s;
 
+  /// Stable local partition key for an account on this phone.
+  static String accountOwnerForEmail(String email) =>
+      'account:${email.trim().toLowerCase()}';
+
   static const _tokenKey = 'access_token'; // the JWT, lives ~8 hours
   static const _emailKey = 'saved_email'; // used for the silent re-login
   static const _passwordKey = 'saved_password'; // used for the silent re-login

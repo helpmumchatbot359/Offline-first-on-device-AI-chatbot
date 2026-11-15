@@ -53,7 +53,36 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<List<ChatTurn>> loadHistory() async {
     final chatId = await tokenStorage.activeChatId();
-    final localMessages = await localDataSource.getMessages(chatId);
+    var localMessages = await localDataSource.getMessages(chatId);
+
+    // A conversation saved before account ownership was added may have an
+    // unassigned local row. Restore it only if this account's backend confirms
+    // that the active chat belongs to the signed-in person.
+    if (localMessages.isEmpty && await apiClient.isSignedIn()) {
+      try {
+        final remotePage = await remoteChatDataSource.getMessages(
+          chatId,
+          skip: 0,
+        );
+        if (remotePage.messages.isNotEmpty) {
+          await localDataSource.claimUnassignedChat(chatId);
+          await localDataSource.mergeRemoteMessages(
+            chatId: chatId,
+            messages: [
+              for (final message in remotePage.messages)
+                (
+                  message: message.message,
+                  aiResponse: message.aiResponse,
+                  date: message.date,
+                ),
+            ],
+          );
+          localMessages = await localDataSource.getMessages(chatId);
+        }
+      } catch (_) {
+        // The active chat may be new or local-only; keep its empty/local state.
+      }
+    }
 
     return localMessages
         .map(
@@ -106,15 +135,30 @@ class ChatRepositoryImpl implements ChatRepository {
     // without downloading every page before the drawer can open.
     if (includeRemote && await apiClient.isSignedIn()) {
       try {
-        final page = await remoteChatDataSource.listChats(skip: skip);
+        final page = await remoteChatDataSource.listChats(skip: skip, take: 20);
+        final localById = {for (final session in sessions) session.id: session};
+        final chatsNeedingTitles = page.chats.where((chat) {
+          final local = localById[chat.id];
+          return chat.messageCount > 0 &&
+              _isGenericTitle(chat.title) &&
+              (local == null || _isGenericTitle(local.title));
+        }).toList();
+        final fetchedTitles = await _fetchRemoteTitles(chatsNeedingTitles);
+
         final remote = <String, ChatSession>{};
         for (final chat in page.chats) {
           final custom = customTitles[chat.id]?.trim();
+          final local = localById[chat.id];
+          final serverTitle = chat.title?.trim();
+          final contentTitle = serverTitle != null && serverTitle.isNotEmpty
+              ? _shortTitle(serverTitle)
+              : fetchedTitles[chat.id];
+          final fallbackTitle = _remoteChatTitle(chat.lastMessageAt);
           remote[chat.id] = ChatSession(
             id: chat.id,
             title: (custom != null && custom.isNotEmpty)
                 ? _shortTitle(custom, limit: 80)
-                : _remoteChatTitle(chat.lastMessageAt),
+                : _preferredTitle(local?.title, contentTitle ?? fallbackTitle),
             updatedAt: chat.lastMessageAt,
             messageCount: chat.messageCount,
             isRemote: true,
@@ -142,6 +186,55 @@ class ChatRepositoryImpl implements ChatRepository {
     return ChatSessionsPage(sessions: sessions, hasMore: false, nextSkip: skip);
   }
 
+  /// Remote summaries often contain only a timestamp and count. Fetch each
+  /// chat's oldest question once so its drawer title is useful, then cache that
+  /// question locally. Four requests at a time keeps history loading bounded.
+  Future<Map<String, String>> _fetchRemoteTitles(
+    List<RemoteChatSummary> chats,
+  ) async {
+    final pending = List<RemoteChatSummary>.of(chats);
+    final titles = <String, String>{};
+
+    Future<void> worker() async {
+      while (pending.isNotEmpty) {
+        final chat = pending.removeLast();
+        try {
+          final page = await remoteChatDataSource.getMessages(
+            chat.id,
+            skip: chat.messageCount > 0 ? chat.messageCount - 1 : 0,
+            take: 1,
+          );
+          if (page.messages.isEmpty) continue;
+
+          final first = page.messages.first;
+          final title = _shortTitle(first.message);
+          if (_isGenericTitle(title)) continue;
+
+          titles[chat.id] = title;
+          await localDataSource.claimUnassignedChat(chat.id);
+          await localDataSource.mergeRemoteMessages(
+            chatId: chat.id,
+            messages: [
+              (
+                message: first.message,
+                aiResponse: first.aiResponse,
+                date: first.date,
+              ),
+            ],
+          );
+        } catch (_) {
+          // Keep the history visible if one title request fails.
+        }
+      }
+    }
+
+    final workerCount = pending.length < 4 ? pending.length : 4;
+    if (workerCount > 0) {
+      await Future.wait(List.generate(workerCount, (_) => worker()));
+    }
+    return titles;
+  }
+
   @override
   Future<String> activeChatId() => tokenStorage.activeChatId();
 
@@ -159,6 +252,7 @@ class ChatRepositoryImpl implements ChatRepository {
           chatId,
           skip: 0,
         );
+        await localDataSource.claimUnassignedChat(chatId);
         await localDataSource.mergeRemoteMessages(
           chatId: chatId,
           messages: [
@@ -193,6 +287,7 @@ class ChatRepositoryImpl implements ChatRepository {
       chatId,
       skip: skip,
     );
+    await localDataSource.claimUnassignedChat(chatId);
     await localDataSource.mergeRemoteMessages(
       chatId: chatId,
       messages: [
@@ -267,16 +362,32 @@ class ChatRepositoryImpl implements ChatRepository {
   /// One-line title for the history drawer.
   static String _shortTitle(String? text, {int limit = 48}) {
     final clean = (text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (clean.isEmpty) return 'New chat';
+    if (clean.isEmpty) return 'Untitled conversation';
     if (clean.length <= limit) return clean;
     return '${clean.substring(0, limit).trimRight()}…';
+  }
+
+  static bool _isGenericTitle(String? title) {
+    final clean = (title ?? '').trim().toLowerCase();
+    return clean.isEmpty ||
+        clean == 'new chat' ||
+        clean == 'untitled conversation' ||
+        clean.startsWith('untitled ·') ||
+        clean.startsWith('saved conversation') ||
+        clean.startsWith('chat ·');
+  }
+
+  static String _preferredTitle(String? local, String remote) {
+    if (!_isGenericTitle(local)) return local!.trim();
+    if (!_isGenericTitle(remote)) return remote.trim();
+    return local?.trim().isNotEmpty == true ? local!.trim() : remote.trim();
   }
 
   static ChatSession _mergeChatSession(ChatSession? remote, ChatSession local) {
     if (remote == null) return local;
     return ChatSession(
       id: local.id,
-      title: local.title.isNotEmpty ? local.title : remote.title,
+      title: _preferredTitle(local.title, remote.title),
       updatedAt: local.updatedAt.compareTo(remote.updatedAt) >= 0
           ? local.updatedAt
           : remote.updatedAt,
@@ -289,7 +400,7 @@ class ChatRepositoryImpl implements ChatRepository {
 
   static String _remoteChatTitle(String timestamp) {
     final parsed = DateTime.tryParse(timestamp)?.toLocal();
-    if (parsed == null) return 'Saved chat';
+    if (parsed == null) return 'Untitled conversation';
     const months = [
       'Jan',
       'Feb',
@@ -304,7 +415,7 @@ class ChatRepositoryImpl implements ChatRepository {
       'Nov',
       'Dec',
     ];
-    return 'Chat · ${months[parsed.month - 1]} ${parsed.day}';
+    return 'Untitled · ${months[parsed.month - 1]} ${parsed.day}';
   }
 
   @override

@@ -29,6 +29,14 @@ Future<void> main() async {
   // 1) Secure storage (token, theme, local ids)
   final tokenStorage = TokenStorage();
 
+  var localAccountOwner = '';
+  try {
+    final savedEmail = await tokenStorage.readProfileEmail();
+    if (savedEmail != null && savedEmail.trim().isNotEmpty) {
+      localAccountOwner = TokenStorage.accountOwnerForEmail(savedEmail);
+    }
+  } catch (_) {}
+
   // 2) Read saved theme before the first frame to prevent white flashes
   var savedTheme = ThemeMode.light;
   try {
@@ -37,7 +45,7 @@ Future<void> main() async {
 
   // 3) Local ObjectBox database & diagnostic JSONL logger initialization
   final localDataSource = ChatLocalDataSource();
-  await localDataSource.init();
+  await localDataSource.init(ownerId: localAccountOwner);
   // Answers that were cut off when Android closed the app last time: rescue them
   // BEFORE the chat screen loads its history.
   await localDataSource.recoverInterruptedTurns();
@@ -72,6 +80,9 @@ Future<void> main() async {
     apiClient,
     tokenStorage,
     clearLocalAccountData: localDataSource.clearAccountData,
+    setLocalAccountOwner: (ownerId) async {
+      localDataSource.setAccountOwner(ownerId);
+    },
   );
   final chatRepository = ChatRepositoryImpl(
     apiClient: apiClient,

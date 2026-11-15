@@ -53,7 +53,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(2, 2086357312960199509),
     name: 'LocalTelemetryEvent',
-    lastPropertyId: const obx_int.IdUid(13, 8238452566174689968),
+    lastPropertyId: const obx_int.IdUid(14, 4512063918538969183),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -135,6 +135,13 @@ final _entities = <obx_int.ModelEntity>[
         type: 9,
         flags: 0,
       ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(14, 4512063918538969183),
+        name: 'ownerId',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(7, 1888406984620050541),
+      ),
     ],
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
@@ -142,7 +149,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(3, 858083822734115410),
     name: 'LocalChat',
-    lastPropertyId: const obx_int.IdUid(4, 4371767264865662114),
+    lastPropertyId: const obx_int.IdUid(5, 5216499434685704842),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -170,6 +177,13 @@ final _entities = <obx_int.ModelEntity>[
         type: 9,
         flags: 0,
       ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 5216499434685704842),
+        name: 'ownerId',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(5, 3577916923782155139),
+      ),
     ],
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[
@@ -183,7 +197,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(4, 7534165613089168249),
     name: 'LocalChatMessage',
-    lastPropertyId: const obx_int.IdUid(7, 6436809668492657866),
+    lastPropertyId: const obx_int.IdUid(9, 2785611599115029563),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -231,6 +245,19 @@ final _entities = <obx_int.ModelEntity>[
         relationField: 'chat',
         relationTarget: 'LocalChat',
       ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 8311844720054994679),
+        name: 'ownerId',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(6, 4954377612403717909),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 2785611599115029563),
+        name: 'source',
+        type: 9,
+        flags: 0,
+      ),
     ],
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
@@ -277,7 +304,7 @@ obx_int.ModelDefinition getObjectBoxModel() {
     generatorVersion: obx_int.GeneratorVersion.v2025_12_16,
     entities: _entities,
     lastEntityId: const obx_int.IdUid(4, 7534165613089168249),
-    lastIndexId: const obx_int.IdUid(4, 8179039965722480203),
+    lastIndexId: const obx_int.IdUid(7, 1888406984620050541),
     lastRelationId: const obx_int.IdUid(0, 0),
     lastSequenceId: const obx_int.IdUid(0, 0),
     retiredEntityUids: const [],
@@ -360,7 +387,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final acknowledgedAtOffset = object.acknowledgedAt == null
             ? null
             : fbb.writeString(object.acknowledgedAt!);
-        fbb.startTable(14);
+        final ownerIdOffset = fbb.writeString(object.ownerId);
+        fbb.startTable(15);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, eventUuidOffset);
         fbb.addOffset(2, eventTypeOffset);
@@ -374,6 +402,7 @@ obx_int.ModelDefinition getObjectBoxModel() {
         fbb.addOffset(10, metadataJsonOffset);
         fbb.addOffset(11, syncStateOffset);
         fbb.addOffset(12, acknowledgedAtOffset);
+        fbb.addOffset(13, ownerIdOffset);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -388,6 +417,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
         );
         final eventUuidParam = const fb.StringReader(asciiOptimization: true)
             .vTableGet(buffer, rootOffset, 6, '');
+        final ownerIdParam = const fb.StringReader(asciiOptimization: true)
+            .vTableGet(buffer, rootOffset, 30, '');
         final eventTypeParam = const fb.StringReader(asciiOptimization: true)
             .vTableGet(buffer, rootOffset, 8, '');
         final chatIdParam = const fb.StringReader(asciiOptimization: true)
@@ -417,6 +448,7 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final object = LocalTelemetryEvent(
           id: idParam,
           eventUuid: eventUuidParam,
+          ownerId: ownerIdParam,
           eventType: eventTypeParam,
           chatId: chatIdParam,
           date: dateParam,
@@ -451,11 +483,13 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final chatIdOffset = fbb.writeString(object.chatId);
         final createdAtOffset = fbb.writeString(object.createdAt);
         final updatedAtOffset = fbb.writeString(object.updatedAt);
-        fbb.startTable(5);
+        final ownerIdOffset = fbb.writeString(object.ownerId);
+        fbb.startTable(6);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, chatIdOffset);
         fbb.addOffset(2, createdAtOffset);
         fbb.addOffset(3, updatedAtOffset);
+        fbb.addOffset(4, ownerIdOffset);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -470,6 +504,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
         );
         final chatIdParam = const fb.StringReader(asciiOptimization: true)
             .vTableGet(buffer, rootOffset, 6, '');
+        final ownerIdParam = const fb.StringReader(asciiOptimization: true)
+            .vTableGet(buffer, rootOffset, 12, '');
         final createdAtParam = const fb.StringReader(asciiOptimization: true)
             .vTableGet(buffer, rootOffset, 8, '');
         final updatedAtParam = const fb.StringReader(asciiOptimization: true)
@@ -477,6 +513,7 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final object = LocalChat(
           id: idParam,
           chatId: chatIdParam,
+          ownerId: ownerIdParam,
           createdAt: createdAtParam,
           updatedAt: updatedAtParam,
         );
@@ -506,7 +543,9 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final aiResponseOffset = fbb.writeString(object.aiResponse);
         final dateOffset = fbb.writeString(object.date);
         final syncStateOffset = fbb.writeString(object.syncState);
-        fbb.startTable(8);
+        final ownerIdOffset = fbb.writeString(object.ownerId);
+        final sourceOffset = fbb.writeString(object.source);
+        fbb.startTable(10);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, chatIdOffset);
         fbb.addOffset(2, messageOffset);
@@ -514,6 +553,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
         fbb.addOffset(4, dateOffset);
         fbb.addOffset(5, syncStateOffset);
         fbb.addInt64(6, object.chat.targetId);
+        fbb.addOffset(7, ownerIdOffset);
+        fbb.addOffset(8, sourceOffset);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -528,6 +569,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
         );
         final chatIdParam = const fb.StringReader(asciiOptimization: true)
             .vTableGet(buffer, rootOffset, 6, '');
+        final ownerIdParam = const fb.StringReader(asciiOptimization: true)
+            .vTableGet(buffer, rootOffset, 18, '');
         final messageParam = const fb.StringReader(asciiOptimization: true)
             .vTableGet(buffer, rootOffset, 8, '');
         final aiResponseParam = const fb.StringReader(asciiOptimization: true)
@@ -536,13 +579,17 @@ obx_int.ModelDefinition getObjectBoxModel() {
             .vTableGet(buffer, rootOffset, 12, '');
         final syncStateParam = const fb.StringReader(asciiOptimization: true)
             .vTableGet(buffer, rootOffset, 14, '');
+        final sourceParam = const fb.StringReader(asciiOptimization: true)
+            .vTableGet(buffer, rootOffset, 20, '');
         final object = LocalChatMessage(
           id: idParam,
           chatId: chatIdParam,
+          ownerId: ownerIdParam,
           message: messageParam,
           aiResponse: aiResponseParam,
           date: dateParam,
           syncState: syncStateParam,
+          source: sourceParam,
         );
         object.chat.targetId = const fb.Int64Reader().vTableGet(
           buffer,
@@ -643,6 +690,11 @@ class LocalTelemetryEvent_ {
   static final acknowledgedAt = obx.QueryStringProperty<LocalTelemetryEvent>(
     _entities[1].properties[12],
   );
+
+  /// See [LocalTelemetryEvent.ownerId].
+  static final ownerId = obx.QueryStringProperty<LocalTelemetryEvent>(
+    _entities[1].properties[13],
+  );
 }
 
 /// [LocalChat] entity fields to define ObjectBox queries.
@@ -665,6 +717,11 @@ class LocalChat_ {
   /// See [LocalChat.updatedAt].
   static final updatedAt = obx.QueryStringProperty<LocalChat>(
     _entities[2].properties[3],
+  );
+
+  /// See [LocalChat.ownerId].
+  static final ownerId = obx.QueryStringProperty<LocalChat>(
+    _entities[2].properties[4],
   );
 
   /// see [LocalChat.messages]
@@ -708,5 +765,15 @@ class LocalChatMessage_ {
   /// See [LocalChatMessage.chat].
   static final chat = obx.QueryRelationToOne<LocalChatMessage, LocalChat>(
     _entities[3].properties[6],
+  );
+
+  /// See [LocalChatMessage.ownerId].
+  static final ownerId = obx.QueryStringProperty<LocalChatMessage>(
+    _entities[3].properties[7],
+  );
+
+  /// See [LocalChatMessage.source].
+  static final source = obx.QueryStringProperty<LocalChatMessage>(
+    _entities[3].properties[8],
   );
 }

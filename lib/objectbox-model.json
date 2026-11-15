@@ -31,7 +31,7 @@
     },
     {
       "id": "2:2086357312960199509",
-      "lastPropertyId": "13:8238452566174689968",
+      "lastPropertyId": "14:4512063918538969183",
       "name": "LocalTelemetryEvent",
       "properties": [
         {
@@ -101,13 +101,20 @@
           "id": "13:8238452566174689968",
           "name": "acknowledgedAt",
           "type": 9
+        },
+        {
+          "id": "14:4512063918538969183",
+          "name": "ownerId",
+          "indexId": "7:1888406984620050541",
+          "type": 9,
+          "flags": 2048
         }
       ],
       "relations": []
     },
     {
       "id": "3:858083822734115410",
-      "lastPropertyId": "4:4371767264865662114",
+      "lastPropertyId": "5:5216499434685704842",
       "name": "LocalChat",
       "properties": [
         {
@@ -132,13 +139,20 @@
           "id": "4:4371767264865662114",
           "name": "updatedAt",
           "type": 9
+        },
+        {
+          "id": "5:5216499434685704842",
+          "name": "ownerId",
+          "indexId": "5:3577916923782155139",
+          "type": 9,
+          "flags": 2048
         }
       ],
       "relations": []
     },
     {
       "id": "4:7534165613089168249",
-      "lastPropertyId": "7:6436809668492657866",
+      "lastPropertyId": "9:2785611599115029563",
       "name": "LocalChatMessage",
       "properties": [
         {
@@ -179,13 +193,25 @@
           "type": 11,
           "flags": 520,
           "relationTarget": "LocalChat"
+        },
+        {
+          "id": "8:8311844720054994679",
+          "name": "ownerId",
+          "indexId": "6:4954377612403717909",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "9:2785611599115029563",
+          "name": "source",
+          "type": 9
         }
       ],
       "relations": []
     }
   ],
   "lastEntityId": "4:7534165613089168249",
-  "lastIndexId": "4:8179039965722480203",
+  "lastIndexId": "7:1888406984620050541",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",
   "modelVersion": 5,

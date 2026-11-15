@@ -20,11 +20,13 @@ class RemoteChatSummary {
     required this.id,
     required this.lastMessageAt,
     required this.messageCount,
+    this.title,
   });
 
   final String id;
   final String lastMessageAt;
   final int messageCount;
+  final String? title;
 }
 
 class RemoteChatMessage {
@@ -60,7 +62,7 @@ class RemoteChatDataSource {
 
   final Dio _dio;
 
-  Future<RemoteChatPage> listChats({required int skip, int take = 50}) async {
+  Future<RemoteChatPage> listChats({required int skip, int take = 20}) async {
     final response = await _dio.get<dynamic>(
       '/v1/chats',
       queryParameters: {'skip': skip, 'take': take},
@@ -82,6 +84,12 @@ class RemoteChatDataSource {
       if (id == null || id.isEmpty) continue;
 
       final rawCount = raw['message_count'];
+      final rawTitle =
+          raw['title'] ??
+          raw['first_message'] ??
+          raw['first_question'] ??
+          raw['preview'] ??
+          raw['last_message'];
       chats.add(
         RemoteChatSummary(
           id: id,
@@ -89,6 +97,9 @@ class RemoteChatDataSource {
           messageCount: rawCount is num
               ? rawCount.toInt()
               : int.tryParse(rawCount?.toString() ?? '') ?? 0,
+          title: rawTitle is String && rawTitle.trim().isNotEmpty
+              ? rawTitle.trim()
+              : null,
         ),
       );
     }

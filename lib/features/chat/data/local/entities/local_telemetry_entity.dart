@@ -8,6 +8,10 @@ class LocalTelemetryEvent {
   @Index()
   String eventUuid; // Generated on phone, reused for retries
 
+  /// Account that queued the event; empty on pre-migration rows.
+  @Index()
+  String ownerId;
+
   String eventType;
   String? chatId;
   String date;
@@ -23,6 +27,7 @@ class LocalTelemetryEvent {
   LocalTelemetryEvent({
     this.id = 0,
     required this.eventUuid,
+    this.ownerId = '',
     required this.eventType,
     this.chatId,
     required this.date,

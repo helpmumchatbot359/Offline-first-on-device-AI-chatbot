@@ -13,10 +13,12 @@ class AuthRepositoryImpl implements AuthRepository {
     this._apiClient,
     this._tokenStorage, {
     this._clearLocalAccountData,
+    this._setLocalAccountOwner,
   });
   final ApiClient _apiClient;
   final TokenStorage _tokenStorage;
   final Future<void> Function()? _clearLocalAccountData;
+  final Future<void> Function(String ownerId)? _setLocalAccountOwner;
 
   @override
   Stream<void> get sessionExpired => _apiClient.sessionExpired;
@@ -82,6 +84,12 @@ class AuthRepositoryImpl implements AuthRepository {
       if (accessToken is! String || accessToken.isEmpty) {
         throw AuthException('The server did not return an access token.');
       }
+      await _setLocalAccountOwner?.call(
+        TokenStorage.accountOwnerForEmail(email),
+      );
+      // A sign-in starts with a fresh blank conversation. Existing chats stay
+      // in the account's history instead of remaining the active chat.
+      await _tokenStorage.resetChatSession();
       await _tokenStorage.saveToken(accessToken);
       // Keep the login in the locked safe so we can renew the 8-hour JWT silently.
       await _tokenStorage.saveCredentials(email: email, password: password);
@@ -100,15 +108,34 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> deleteAccount() async {
-    final token = await _tokenStorage.readToken();
+    var token = await _tokenStorage.readToken();
+
+    // A missing JWT does not always mean the person is signed out. The app
+    // keeps the saved login securely so ApiClient can quietly get another JWT.
+    // Ask it to do that before we decide the person must sign in again.
     if (token == null || token.isEmpty) {
-      throw AuthException('Please sign in again before deleting your account.');
+      final refreshResult = await _apiClient.refreshSession();
+      token = await _tokenStorage.readToken();
+
+      // If the network is down, keep the saved login and let the person retry.
+      // If the server rejected the saved login (or there was no saved login),
+      // use the same sign-in-again message as the rest of the app.
+      if (token == null || token.isEmpty) {
+        if (refreshResult == RefreshResult.unreachable) {
+          throw AuthException(
+            'Could not reconnect to your account. Check your internet and try again.',
+          );
+        }
+        throw AuthException(
+          'Please sign in again before deleting your account.',
+        );
+      }
     }
     final appUserId = _appUserIdFromToken(token);
 
     try {
       // The current backend route still expects the account ID in the path.
-      // The same JWT is attached by ApiClient and remains the authorization.
+      // ApiClient attaches the JWT and handles its normal refresh/retry flow.
       await _apiClient.dio.delete<dynamic>(
         '/user/${Uri.encodeComponent(appUserId)}',
       );
