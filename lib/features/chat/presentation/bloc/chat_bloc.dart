@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../domain/chat_repository.dart';
+import '../../domain/chat_id.dart';
 import '../../domain/chat_session.dart';
 import '../../domain/chat_turn.dart';
 import '../events/chat_event.dart';
@@ -332,7 +333,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     try {
       String? currentTitle;
       for (final session in state.sessions) {
-        if (session.id == state.activeChatId) currentTitle = session.title;
+        if (state.activeChatId != null &&
+            sameChatHistory(session.id, state.activeChatId!)) {
+          currentTitle = session.title;
+        }
       }
 
       final newChatId = await _repo.branchChat();
@@ -389,10 +393,31 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     List<ChatSession> incoming,
   ) {
     final byId = <String, ChatSession>{
-      for (final session in existing) session.id: session,
+      for (final session in existing) chatHistoryIdentity(session.id): session,
     };
     for (final session in incoming) {
-      byId[session.id] = session;
+      final identity = chatHistoryIdentity(session.id);
+      final previous = byId[identity];
+      if (previous == null) {
+        byId[identity] = session;
+        continue;
+      }
+      final preferred = session.isRemote && !previous.isRemote
+          ? session
+          : previous.isRemote && !session.isRemote
+          ? previous
+          : session;
+      byId[identity] = ChatSession(
+        id: preferred.id,
+        title: preferred.title,
+        updatedAt: previous.updatedAt.compareTo(session.updatedAt) >= 0
+            ? previous.updatedAt
+            : session.updatedAt,
+        messageCount: previous.messageCount > session.messageCount
+            ? previous.messageCount
+            : session.messageCount,
+        isRemote: previous.isRemote || session.isRemote,
+      );
     }
     return byId.values.toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));

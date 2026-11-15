@@ -7,6 +7,7 @@ import 'ai/native_offline_ai_service.dart';
 import 'ai/chat_context.dart';
 import 'ai/model_setup_service.dart';
 import '../domain/chat_repository.dart';
+import '../domain/chat_id.dart';
 import '../domain/chat_session.dart';
 import '../domain/chat_turn.dart';
 import '../../../core/network/api_client.dart';
@@ -130,15 +131,19 @@ class ChatRepositoryImpl implements ChatRepository {
         ),
       );
     }
+    final localSessions = _deduplicateLocalSessions(sessions);
     // Local ObjectBox history keeps working offline. A signed-in account also
     // receives one server page at a time, so remote history survives a reinstall
     // without downloading every page before the drawer can open.
     if (includeRemote && await apiClient.isSignedIn()) {
       try {
         final page = await remoteChatDataSource.listChats(skip: skip, take: 20);
-        final localById = {for (final session in sessions) session.id: session};
+        final localById = {
+          for (final session in localSessions)
+            chatHistoryIdentity(session.id): session,
+        };
         final chatsNeedingTitles = page.chats.where((chat) {
-          final local = localById[chat.id];
+          final local = localById[chatHistoryIdentity(chat.id)];
           return chat.messageCount > 0 &&
               _isGenericTitle(chat.title) &&
               (local == null || _isGenericTitle(local.title));
@@ -147,14 +152,17 @@ class ChatRepositoryImpl implements ChatRepository {
 
         final remote = <String, ChatSession>{};
         for (final chat in page.chats) {
-          final custom = customTitles[chat.id]?.trim();
-          final local = localById[chat.id];
+          final local = localById[chatHistoryIdentity(chat.id)];
+          final custom =
+              (customTitles[chat.id] ??
+                      (local == null ? null : customTitles[local.id]))
+                  ?.trim();
           final serverTitle = chat.title?.trim();
           final contentTitle = serverTitle != null && serverTitle.isNotEmpty
               ? _shortTitle(serverTitle)
               : fetchedTitles[chat.id];
           final fallbackTitle = _remoteChatTitle(chat.lastMessageAt);
-          remote[chat.id] = ChatSession(
+          final session = ChatSession(
             id: chat.id,
             title: (custom != null && custom.isNotEmpty)
                 ? _shortTitle(custom, limit: 80)
@@ -163,13 +171,21 @@ class ChatRepositoryImpl implements ChatRepository {
             messageCount: chat.messageCount,
             isRemote: true,
           );
+          final identity = chatHistoryIdentity(chat.id);
+          final previous = remote[identity];
+          remote[identity] = previous == null
+              ? session
+              : _mergeChatSession(session, previous);
         }
 
-        final merged = <String, ChatSession>{
-          for (final session in remote.values) session.id: session,
-          for (final session in sessions)
-            session.id: _mergeChatSession(remote[session.id], session),
-        };
+        final merged = <String, ChatSession>{...remote};
+        for (final session in localSessions) {
+          final identity = chatHistoryIdentity(session.id);
+          final remoteSession = remote[identity];
+          merged[identity] = remoteSession == null
+              ? _mergeLocalChatSessions(merged[identity], session)
+              : _mergeChatSession(remoteSession, session);
+        }
         final all = merged.values.toList()
           ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         return ChatSessionsPage(
@@ -183,7 +199,45 @@ class ChatRepositoryImpl implements ChatRepository {
       }
     }
 
-    return ChatSessionsPage(sessions: sessions, hasMore: false, nextSkip: skip);
+    return ChatSessionsPage(
+      sessions: localSessions,
+      hasMore: false,
+      nextSkip: skip,
+    );
+  }
+
+  static List<ChatSession> _deduplicateLocalSessions(
+    Iterable<ChatSession> sessions,
+  ) {
+    final byIdentity = <String, ChatSession>{};
+    for (final session in sessions) {
+      final identity = chatHistoryIdentity(session.id);
+      byIdentity[identity] = _mergeLocalChatSessions(
+        byIdentity[identity],
+        session,
+      );
+    }
+    return byIdentity.values.toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
+  static ChatSession _mergeLocalChatSessions(
+    ChatSession? existing,
+    ChatSession incoming,
+  ) {
+    if (existing == null) return incoming;
+    final id = existing.id.startsWith('8-user-') ? incoming.id : existing.id;
+    return ChatSession(
+      id: id,
+      title: _preferredTitle(existing.title, incoming.title),
+      updatedAt: existing.updatedAt.compareTo(incoming.updatedAt) >= 0
+          ? existing.updatedAt
+          : incoming.updatedAt,
+      messageCount: existing.messageCount > incoming.messageCount
+          ? existing.messageCount
+          : incoming.messageCount,
+      isRemote: existing.isRemote || incoming.isRemote,
+    );
   }
 
   /// Remote summaries often contain only a timestamp and count. Fetch each
@@ -308,31 +362,41 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<void> deleteChat(String chatId) async {
     if (await apiClient.isSignedIn()) {
-      try {
-        await remoteChatDataSource.deleteChat(chatId);
-      } on DioException catch (error) {
-        // A local-only/offline chat has no server record to delete yet.
-        // All other failures keep the local copy so the UI does not pretend
-        // that a server-side deletion succeeded.
-        if (error.response?.statusCode != 404) rethrow;
-      }
+      await _deleteRemoteChat(chatId);
     }
 
     await localDataSource.deleteChat(chatId);
-    await tokenStorage.deleteChatTitle(chatId);
+    for (final alias in chatHistoryIdAliases(chatId)) {
+      await tokenStorage.deleteChatTitle(alias);
+    }
 
     // If the deleted chat was the open one, move to a fresh blank chat.
     final active = await tokenStorage.activeChatId();
-    if (active == chatId) {
+    if (sameChatHistory(active, chatId)) {
       await tokenStorage.startNewChat();
     }
+  }
+
+  Future<void> _deleteRemoteChat(String chatId) async {
+    for (final candidate in chatHistoryIdAliases(chatId)) {
+      try {
+        await remoteChatDataSource.deleteChat(candidate);
+        return;
+      } on DioException catch (error) {
+        if (error.response?.statusCode == 404) continue;
+        rethrow;
+      }
+    }
+    // If both known ID forms return 404, this is a local-only conversation.
   }
 
   @override
   Future<void> renameChat(String chatId, String title) async {
     final clean = title.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (clean.isEmpty) return;
-    await tokenStorage.saveChatTitle(chatId, clean);
+    for (final alias in chatHistoryIdAliases(chatId)) {
+      await tokenStorage.saveChatTitle(alias, clean);
+    }
   }
 
   @override
@@ -386,7 +450,7 @@ class ChatRepositoryImpl implements ChatRepository {
   static ChatSession _mergeChatSession(ChatSession? remote, ChatSession local) {
     if (remote == null) return local;
     return ChatSession(
-      id: local.id,
+      id: remote.id,
       title: _preferredTitle(local.title, remote.title),
       updatedAt: local.updatedAt.compareTo(remote.updatedAt) >= 0
           ? local.updatedAt

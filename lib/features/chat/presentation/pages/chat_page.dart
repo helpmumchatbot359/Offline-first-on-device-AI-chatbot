@@ -10,6 +10,7 @@ import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../auth/presentation/events/auth_event.dart';
 import '../../../auth/presentation/states/auth_state.dart';
 import '../../../settings/presentation/pages/settings_page.dart';
+import '../../domain/chat_id.dart';
 import '../../domain/chat_session.dart';
 import '../../domain/chat_turn.dart';
 import '../bloc/chat_bloc.dart';
@@ -467,7 +468,10 @@ class _ChatMenuButton extends StatelessWidget {
 
         String chatTitle = 'This chat';
         for (final session in state.sessions) {
-          if (session.id == state.activeChatId) chatTitle = session.title;
+          if (state.activeChatId != null &&
+              sameChatHistory(session.id, state.activeChatId!)) {
+            chatTitle = session.title;
+          }
         }
 
         final hasChat = state.activeChatId != null && state.messages.isNotEmpty;
@@ -792,7 +796,12 @@ class _ChatHistoryDrawer extends StatelessWidget {
                               final session = state.sessions[index];
                               return _SessionTile(
                                 session: session,
-                                selected: session.id == state.activeChatId,
+                                selected:
+                                    state.activeChatId != null &&
+                                    sameChatHistory(
+                                      session.id,
+                                      state.activeChatId!,
+                                    ),
                                 enabled: !state.isGenerating,
                               );
                             },

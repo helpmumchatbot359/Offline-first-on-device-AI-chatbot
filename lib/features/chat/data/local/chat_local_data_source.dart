@@ -3,6 +3,7 @@ import 'package:path/path.dart' as p;
 
 import 'entities/local_chat_entity.dart';
 import 'entities/local_telemetry_entity.dart';
+import '../../domain/chat_id.dart';
 import '../../../../objectbox.g.dart';
 
 class ChatLocalDataSource {
@@ -302,31 +303,34 @@ class ChatLocalDataSource {
 
   /// Deletes the conversation row AND every message that belongs to it.
   Future<void> deleteChat(String chatId) async {
-    final messageQuery = _messageBox
-        .query(
-          LocalChatMessage_.chatId
-              .equals(chatId)
-              .and(LocalChatMessage_.ownerId.equals(_ownerId)),
-        )
+    final chatsQuery = _chatBox
+        .query(LocalChat_.ownerId.equals(_ownerId))
         .build();
-    final messageIds = messageQuery.find().map((m) => m.id).toList();
-    messageQuery.close();
+    final matchingChats = chatsQuery
+        .find()
+        .where((chat) => sameChatHistory(chat.chatId, chatId))
+        .toList();
+    chatsQuery.close();
+    final matchingChatIds = {
+      ...chatHistoryIdAliases(chatId),
+      for (final chat in matchingChats) chat.chatId,
+    };
+
+    final messagesQuery = _messageBox
+        .query(LocalChatMessage_.ownerId.equals(_ownerId))
+        .build();
+    final messageIds = messagesQuery
+        .find()
+        .where((message) => matchingChatIds.contains(message.chatId))
+        .map((message) => message.id)
+        .toList();
+    messagesQuery.close();
     if (messageIds.isNotEmpty) {
       _messageBox.removeMany(messageIds);
     }
 
-    final chatQuery = _chatBox
-        .query(
-          LocalChat_.chatId
-              .equals(chatId)
-              .and(LocalChat_.ownerId.equals(_ownerId)),
-        )
-        .build();
-    final chat = chatQuery.findFirst();
-    chatQuery.close();
-    if (chat != null) {
-      _chatBox.remove(chat.id);
-    }
+    final localChatIds = matchingChats.map((chat) => chat.id).toList();
+    if (localChatIds.isNotEmpty) _chatBox.removeMany(localChatIds);
   }
 
   /// Removes all locally stored chats and queued telemetry for account deletion.
