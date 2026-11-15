@@ -43,57 +43,10 @@ class SettingsPage extends StatelessWidget {
 
   Future<void> _confirmDeleteAccount(BuildContext context) async {
     final authBloc = context.read<AuthBloc>();
-    final confirmationController = TextEditingController();
     final deleted = await showDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Are you sure?'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'This will permanently delete your account and remove your '
-                'saved chats from this phone. You will be signed out. This '
-                'action cannot be undone.',
-              ),
-              const SizedBox(height: 16),
-              const Text('Type “Delete Account” to continue.'),
-              const SizedBox(height: 8),
-              TextField(
-                controller: confirmationController,
-                autofocus: true,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'Delete Account',
-                ),
-                onChanged: (_) => setDialogState(() {}),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(ctx).colorScheme.error,
-                foregroundColor: Theme.of(ctx).colorScheme.onError,
-                minimumSize: const Size(120, 44),
-              ),
-              onPressed: confirmationController.text.trim() == 'Delete Account'
-                  ? () => Navigator.pop(ctx, true)
-                  : null,
-              child: const Text('Delete account'),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) => const _DeleteAccountConfirmationDialog(),
     );
-    confirmationController.dispose();
     if (deleted == true) authBloc.add(AccountDeletionRequested());
   }
 
@@ -365,6 +318,74 @@ class SettingsPage extends StatelessWidget {
     final source = name.trim().isNotEmpty ? name : email.trim();
     if (source.isEmpty) return 'M';
     return String.fromCharCode(source.runes.first).toUpperCase();
+  }
+}
+
+class _DeleteAccountConfirmationDialog extends StatefulWidget {
+  const _DeleteAccountConfirmationDialog();
+
+  @override
+  State<_DeleteAccountConfirmationDialog> createState() =>
+      _DeleteAccountConfirmationDialogState();
+}
+
+class _DeleteAccountConfirmationDialogState
+    extends State<_DeleteAccountConfirmationDialog> {
+  final _confirmationController = TextEditingController();
+
+  @override
+  void dispose() {
+    _confirmationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      scrollable: true,
+      title: const Text('Are you sure?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'This will permanently delete your account and remove your '
+            'saved chats from this phone. You will be signed out. This '
+            'action cannot be undone.',
+          ),
+          const SizedBox(height: 16),
+          const Text('Type “Delete Account” to continue.'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _confirmationController,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              hintText: 'Delete Account',
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+            minimumSize: const Size(120, 44),
+          ),
+          onPressed: _confirmationController.text.trim() == 'Delete Account'
+              ? () => Navigator.pop(context, true)
+              : null,
+          child: const Text('Delete account'),
+        ),
+      ],
+    );
   }
 }
 

@@ -49,7 +49,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
       imageAlignment: Alignment(0, -0.12),
     ),
     OnboardingItem(
-      imageAsset: 'assets/images/onboarding/child_care.png',
+      imageAsset: 'assets/images/onboarding/child_care.jpg',
       eyebrow: 'Care for your child',
       iconData: Icons.child_care_rounded,
       title: 'A healthier start\nfor every child.',
