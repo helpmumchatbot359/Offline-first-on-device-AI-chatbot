@@ -43,33 +43,58 @@ class SettingsPage extends StatelessWidget {
 
   Future<void> _confirmDeleteAccount(BuildContext context) async {
     final authBloc = context.read<AuthBloc>();
-    final ok = await showDialog<bool>(
+    final confirmationController = TextEditingController();
+    final deleted = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete account permanently?'),
-        content: const Text(
-          'This will delete your account and remove your saved chats from this '
-          'phone. You will be signed out. Anonymous analytics may be retained. '
-          'This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Are you sure?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This will permanently delete your account and remove your '
+                'saved chats from this phone. You will be signed out. This '
+                'action cannot be undone.',
+              ),
+              const SizedBox(height: 16),
+              const Text('Type “Delete Account” to continue.'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: confirmationController,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'Delete Account',
+                ),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+            ],
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-              foregroundColor: Theme.of(ctx).colorScheme.onError,
-              minimumSize: const Size(120, 44),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
             ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete account'),
-          ),
-        ],
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+                foregroundColor: Theme.of(ctx).colorScheme.onError,
+                minimumSize: const Size(120, 44),
+              ),
+              onPressed: confirmationController.text.trim() == 'Delete Account'
+                  ? () => Navigator.pop(ctx, true)
+                  : null,
+              child: const Text('Delete account'),
+            ),
+          ],
+        ),
       ),
     );
-    if (ok == true) authBloc.add(AccountDeletionRequested());
+    confirmationController.dispose();
+    if (deleted == true) authBloc.add(AccountDeletionRequested());
   }
 
   void _openLegal(
