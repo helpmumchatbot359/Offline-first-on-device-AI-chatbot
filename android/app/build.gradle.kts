@@ -1,4 +1,5 @@
 import java.io.File
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -16,6 +17,11 @@ val toolContractAssetDir = layout.buildDirectory.dir("generated/tool-contract-as
 val localPackageDir = file("../package")
 val localToolContract = File(localPackageDir, "contracts/tool_contract.json")
 val localSystemPrompt = File(localPackageDir, "prompts/system_prompt.txt")
+val signingProperties = Properties()
+val signingPropertiesFile = rootProject.file("key.properties")
+if (signingPropertiesFile.exists()) {
+    signingPropertiesFile.inputStream().use { signingProperties.load(it) }
+}
 
 val packagedToolContract = handoffDirVal?.let { File(it, "contracts/tool_contract.json") }
 val packagedSystemPrompt = handoffDirVal?.let { File(it, "prompts/system_prompt.txt") }
@@ -52,6 +58,15 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            keyAlias = signingProperties.getProperty("keyAlias")
+            keyPassword = signingProperties.getProperty("keyPassword")
+            storeFile = signingProperties.getProperty("storeFile")?.let { rootProject.file(it) }
+            storePassword = signingProperties.getProperty("storePassword")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
@@ -68,7 +83,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
