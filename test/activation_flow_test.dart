@@ -248,10 +248,12 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.byType(TextField), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(6));
     expect(find.byType(AnimatedContainer), findsNWidgets(6));
 
-    await tester.enterText(find.byType(TextField), '123456');
+    // Typing/pasting the whole code into the first box distributes it across
+    // the six visible boxes and auto-submits.
+    await tester.enterText(find.byType(TextField).first, '123456');
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(repo.lastActivatedCode, '123456');

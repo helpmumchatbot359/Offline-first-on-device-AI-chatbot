@@ -32,8 +32,15 @@ class _ActivationPageState extends State<ActivationPage> {
   /// has no lockout, so this is purely to stop accidental spam.
   static const Duration _resendCooldown = Duration(seconds: 45);
 
-  final _controller = TextEditingController();
-  final _focus = FocusNode();
+  // Six real fields: what you type is what you see. No hidden overlay.
+  final List<TextEditingController> _controllers = List.generate(
+    _codeLength,
+    (_) => TextEditingController(),
+  );
+  final List<FocusNode> _focusNodes = List.generate(
+    _codeLength,
+    (_) => FocusNode(),
+  );
 
   Timer? _ticker;
   DateTime? _expiresAt;
@@ -45,6 +52,8 @@ class _ActivationPageState extends State<ActivationPage> {
 
   int _lastResendCount = 0;
 
+  String get _code => _controllers.map((c) => c.text).join();
+
   @override
   void initState() {
     super.initState();
@@ -54,7 +63,6 @@ class _ActivationPageState extends State<ActivationPage> {
     _remaining = _remainingNow();
     _lastResendCount = state.resendCount;
 
-    _controller.addListener(_handleCodeChanged);
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
@@ -68,16 +76,19 @@ class _ActivationPageState extends State<ActivationPage> {
 
     // Open the keyboard straight away: the person is here to type a code.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focus.requestFocus();
+      if (mounted) _focusNodes.first.requestFocus();
     });
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
-    _controller.removeListener(_handleCodeChanged);
-    _controller.dispose();
-    _focus.dispose();
+    for (final controller in _controllers) {
+      controller.dispose();
+    }
+    for (final node in _focusNodes) {
+      node.dispose();
+    }
     super.dispose();
   }
 
@@ -90,16 +101,50 @@ class _ActivationPageState extends State<ActivationPage> {
 
   bool get _expired => _remaining == Duration.zero;
 
-  void _handleCodeChanged() {
-    final code = _controller.text;
+  void _clearCode() {
+    for (final controller in _controllers) {
+      controller.clear();
+    }
+    _autoSubmitted = false;
     setState(() {});
+    _focusNodes.first.requestFocus();
+  }
 
-    if (code.length < _codeLength) {
-      _autoSubmitted = false;
+  /// Handles typing, backspace and a full 6-digit paste into one box.
+  void _handleChanged(int index, String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+
+    if (digits.isEmpty) {
+      _controllers[index].clear();
+      if (index > 0) _focusNodes[index - 1].requestFocus();
+      setState(() {});
       return;
     }
-    // Auto-submit once the sixth digit is in.
-    if (code.length == _codeLength && !_autoSubmitted) {
+
+    if (digits.length > 1) {
+      // A pasted code fills the boxes from here to the end.
+      for (var offset = 0;
+          offset < digits.length && index + offset < _codeLength;
+          offset++) {
+        _controllers[index + offset].text = digits[offset];
+      }
+      final next = (index + digits.length).clamp(0, _codeLength - 1);
+      _focusNodes[next].requestFocus();
+      setState(() {});
+      _maybeAutoSubmit();
+      return;
+    }
+
+    _controllers[index].text = digits;
+    if (index < _codeLength - 1) {
+      _focusNodes[index + 1].requestFocus();
+    }
+    setState(() {});
+    _maybeAutoSubmit();
+  }
+
+  void _maybeAutoSubmit() {
+    if (_code.length == _codeLength && !_autoSubmitted) {
       _autoSubmitted = true;
       _submit();
     }
@@ -108,10 +153,10 @@ class _ActivationPageState extends State<ActivationPage> {
   void _submit() {
     final state = context.read<AuthBloc>().state;
     if (state.busy || _expired) return;
-    if (_controller.text.length != _codeLength) return;
+    if (_code.length != _codeLength) return;
 
     FocusScope.of(context).unfocus();
-    context.read<AuthBloc>().add(ActivationCodeSubmitted(_controller.text));
+    context.read<AuthBloc>().add(ActivationCodeSubmitted(_code));
   }
 
   void _resend() {
@@ -120,9 +165,8 @@ class _ActivationPageState extends State<ActivationPage> {
 
     setState(() {
       _cooldownUntil = now.add(_resendCooldown);
-      _autoSubmitted = false;
-      _controller.clear();
     });
+    _clearCode();
     context.read<AuthBloc>().add(ActivationCodeResendRequested());
   }
 
@@ -133,13 +177,9 @@ class _ActivationPageState extends State<ActivationPage> {
   void _onState(BuildContext context, AuthState state) {
     if (state.resendCount != _lastResendCount) {
       _lastResendCount = state.resendCount;
-      setState(() {
-        _expiresAt = state.pendingExpiresAt ?? DateTime.now().add(_codeLifetime);
-        _remaining = _remainingNow();
-        _autoSubmitted = false;
-        _controller.clear();
-      });
-      _focus.requestFocus();
+      _expiresAt = state.pendingExpiresAt ?? DateTime.now().add(_codeLifetime);
+      _remaining = _remainingNow();
+      _clearCode();
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -149,11 +189,7 @@ class _ActivationPageState extends State<ActivationPage> {
 
     // Wrong/expired code: clear the boxes so the person can type again.
     if (state.error != null && state.status == AuthStatus.pendingActivation) {
-      setState(() {
-        _autoSubmitted = false;
-        _controller.clear();
-      });
-      _focus.requestFocus();
+      _clearCode();
     }
   }
 
@@ -180,12 +216,10 @@ class _ActivationPageState extends State<ActivationPage> {
             builder: (context, state) {
               final email = (state.email ?? '').trim();
               final busy = state.busy;
-              final code = _controller.text;
               final cooldownLeft = _cooldownUntil == null
                   ? 0
                   : _cooldownUntil!.difference(DateTime.now()).inSeconds;
-              final canSubmit =
-                  !busy && !_expired && code.length == _codeLength;
+              final canSubmit = !busy && !_expired && _code.length == _codeLength;
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
@@ -239,10 +273,7 @@ class _ActivationPageState extends State<ActivationPage> {
                             ),
                           ),
                           const SizedBox(height: 26),
-                          _buildCodeBoxes(
-                            colors: colors,
-                            hasError: state.error != null,
-                          ),
+                          _buildCodeBoxes(colors: colors, hasError: state.error != null),
                           const SizedBox(height: 14),
                           if (state.error != null)
                             Padding(
@@ -330,80 +361,69 @@ class _ActivationPageState extends State<ActivationPage> {
     required ColorScheme colors,
     required bool hasError,
   }) {
-    final code = _controller.text;
+    final typedLength = _code.length;
 
-    return Semantics(
-      label: 'Verification code, ${code.length} of $_codeLength digits entered',
-      textField: true,
-      child: Stack(
-        children: [
-          Row(
-            children: List.generate(_codeLength, (index) {
-              final filled = index < code.length;
-              final active = index == code.length && !_expired;
-              final borderColor = hasError
-                  ? colors.error
-                  : active
-                  ? colors.primary
-                  : colors.outlineVariant;
+    return Row(
+      children: List.generate(_codeLength, (index) {
+        final active = index == typedLength && !_expired;
+        final borderColor = hasError
+            ? colors.error
+            : active
+            ? colors.primary
+            : colors.outlineVariant;
 
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: index == _codeLength - 1 ? 0 : 8,
-                  ),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    height: 56,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: colors.surfaceContainerLow,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: borderColor,
-                        width: active || hasError ? 2 : 1,
-                      ),
-                    ),
-                    child: Text(
-                      filled ? code[index] : '',
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: colors.onSurface,
-                          ),
-                    ),
-                  ),
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(right: index == _codeLength - 1 ? 0 : 8),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              height: 56,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: borderColor,
+                  width: active || hasError ? 2 : 1,
                 ),
-              );
-            }),
-          ),
-          // One invisible field drives all six boxes. It keeps paste, autofill
-          // and the system keyboard working without six focus nodes.
-          Positioned.fill(
-            child: TextField(
-              controller: _controller,
-              focusNode: _focus,
-              showCursor: false,
-              enableInteractiveSelection: false,
-              style: const TextStyle(color: Colors.transparent, height: 1),
-              cursorColor: Colors.transparent,
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.done,
-              autofillHints: const [AutofillHints.oneTimeCode],
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(_codeLength),
-              ],
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                counterText: '',
-                contentPadding: EdgeInsets.zero,
               ),
-              onSubmitted: (_) => _submit(),
+              child: Semantics(
+                label: 'Digit ${index + 1} of $_codeLength',
+                child: TextField(
+                  controller: _controllers[index],
+                  focusNode: _focusNodes[index],
+                  textAlign: TextAlign.center,
+                  keyboardType: TextInputType.number,
+                  textInputAction: index == _codeLength - 1
+                      ? TextInputAction.done
+                      : TextInputAction.next,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: colors.onSurface,
+                  ),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    counterText: '',
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onTap: () {
+                    final controller = _controllers[index];
+                    controller.selection = TextSelection(
+                      baseOffset: 0,
+                      extentOffset: controller.text.length,
+                    );
+                  },
+                  onChanged: (value) => _handleChanged(index, value),
+                  onSubmitted: (_) => _submit(),
+                ),
+              ),
             ),
           ),
-        ],
-      ),
+        );
+      }),
     );
   }
 }
