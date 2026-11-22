@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/config/legal_links.dart';
 import '../../../../core/theme/theme_bloc/theme_bloc.dart';
 import '../../../../core/theme/theme_bloc/theme_event.dart';
 import '../../../../core/theme/theme_bloc/theme_state.dart';
@@ -197,7 +198,7 @@ class SettingsPage extends StatelessWidget {
                           context,
                           title: 'Terms of Use',
                           assetPath: 'assets/legal/terms_of_use.md',
-                          externalUrl: 'https://helpmum.org/terms',
+                          externalUrl: LegalLinks.terms,
                         ),
                       ),
                       Divider(
@@ -214,7 +215,7 @@ class SettingsPage extends StatelessWidget {
                           context,
                           title: 'Privacy Policy',
                           assetPath: 'assets/legal/privacy_policy.md',
-                          externalUrl: 'https://helpmum.org/privacy',
+                          externalUrl: LegalLinks.privacy,
                         ),
                       ),
                     ],

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/config/legal_links.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/mama_logo.dart';
 import '../../../../core/widgets/theme_toggle_button.dart';
@@ -569,7 +570,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                             onTap: () => _openLegal(
                               title: 'Terms of Use',
                               assetPath: 'assets/legal/terms_of_use.md',
-                              externalUrl: 'https://helpmum.org/terms',
+                              externalUrl: LegalLinks.terms,
                             ),
                             child: Text('Terms of Use', style: linkStyle),
                           ),
@@ -582,7 +583,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                             onTap: () => _openLegal(
                               title: 'Privacy Policy',
                               assetPath: 'assets/legal/privacy_policy.md',
-                              externalUrl: 'https://helpmum.org/privacy',
+                              externalUrl: LegalLinks.privacy,
                             ),
                             child: Text('Privacy Policy', style: linkStyle),
                           ),

@@ -1,71 +1,401 @@
-# Terms of Use
+# MAMABOT AI TERMS OF USE
 
-Please read these Terms of Use carefully before using the website and services provided by HelpMum Foundation ("HelpMum"). The terms contain important information about your rights and obligations.
+HELPMUM AFRICA FOUNDATION
 
-Effective Date: July 20, 2026
+Version 1.0 | Effective Date: 18th November 2026
 
-## What are these Terms about?
+## IMPORTANT - PLEASE READ FIRST
 
-These Terms of Use (these "Terms"), together with any documents expressly incorporated by reference in these Terms, explain how you use and access our website and all related websites owned and managed by us (collectively, the "Website") including any content or functionality offered through the Website. Your use of this Website is always subject to our Privacy Policy.
+MamaBot AI is an AI information tool. It is not a doctor, midwife or emergency service. It does not give medical advice, diagnosis or treatment.
 
-## Do you accept these Terms?
+In an emergency, go to the nearest hospital or call 112 immediately. Do not wait for the App to respond. See Schedule 1 for warning signs.
 
-By accessing, using or signing up to this Website, or our newsletters, you acknowledge that you have read and understand these terms and our Privacy Policy and you agree to a binding Agreement with HelpMum based on these terms.
+Your pregnancy and health information is sensitive personal data. We protect it under the Nigeria Data Protection Act 2023 and our Privacy Policy.
 
-## How do we handle your data?
+You may delete your account at any time. Deleted accounts can be recovered by email within 90 days; after 90 days deletion is permanent.
 
-We recognize the importance of protecting the privacy of those who visit this Website and we are committed to handling your personal data in line with global industry best practices. By using the Website, you acknowledge that you consent to the collection, use, storage, and disclosure of your information as set forth in these Terms and our Privacy Policy. To understand how we use your information and the measures we implement to secure it, please review our Privacy Policy.
+## 1.  INTRODUCTION AND ACCEPTANCE
 
-## What about the Website Content and Intellectual Property?
+1.1	These Terms of Use (the “Terms”) govern your access to and use of MamaBot AI (the “App”), an artificial intelligence-powered conversational assistant provided by HelpMum Africa Foundation (“HelpMum”, “we”, “us” or “our”), whose office is at PWAN Building, Jakande First Gate, Lekki Phase 2, Lagos State, Nigeria.
 
-The content on the Website, including text, graphics, images, logos, and other materials (the "Content"), is protected by copyright, trademark, patent, and other intellectual property laws. We retain all rights to our Content and do not grant you any licenses to use it unless expressly stated in these Terms.
+1.2	MamaBot AI is designed to give pregnant women and nursing mothers general health information and support by allowing them to ask questions and receive AI-generated answers in a conversational format.
 
-## What Conduct is Prohibited?
+1.3	By creating an account, ticking the acceptance box, or otherwise accessing or using the App, you confirm that you have read, understood and agree to be bound by these Terms and by our Privacy Policy, which forms part of these Terms. If you do not agree, you must not create an account or use the App.
 
-Without our prior written consent, you may not use, modify, disassemble, decompile, reverse engineer, reproduce, distribute, lease, sell, license, publish, display, download, transmit, or otherwise exploit any Content. You agree not to engage in activities that burden the Website, interfere with its functionality, or use it for any unauthorized purposes.
+1.4	Due to the fact that the App handles health-related and other sensitive personal information, you are strongly encouraged to read clauses 5 (Medical Disclaimer), 7 (What the App Is Not For) and 10 (Your Data and Privacy) carefully.
 
-## What Disclaimers should you be aware of?
+## 2.  DEFINITIONS
 
-This Website and its Content is provided on an "as is" and "as available" basis without warranties of any kind. HelpMum makes no representation and gives no warranties, whether expressed or implied, as to the suitability and operability of the platform, its quality or functionality or its fitness for any purpose whatsoever. HelpMum does not guarantee that the operation of its website or facilities will be uninterrupted or without error.
+2.1	In these Terms:
 
-This site is for informational and educational purposes on health-related issues and does not in any way replace professional medical advice, diagnosis or treatment. Any concern about your health prompted by the information contained on the Website should be discussed with a Physician or any other Health Professional. The use of any information provided on the Website shall solely be at your own risk. HelpMum will not be responsible for any decision made as a result of information contained on the Website.
+“Account” – the personal account you create to use the App.
 
-HelpMum does not guarantee the reliability, availability or continuity of the services made available to the user, thus excluding any liability for damages which may arise owing to a lack of availability, reliability or continuity of its Website, although it will try to facilitate, to the extent of its capabilities and will try to timeously rectify the break in services, putting into place, to the extent of its capabilities, alternative means. HelpMum does not undertake to control and does not have any prior control over viruses or elements in its Website content which may alter the software or hardware of the user or of persons visiting the Website and will therefore not be liable for damages of any kind which may arise from the same.
+“AI Output” – any answer, suggestion, summary, translation or other content generated by the App in response to your Input.
 
-## What are the limits to our liability?
+“Applicable Law” – all laws of the Federal Republic of Nigeria applicable to these Terms, the App or the processing of personal data, including the Nigeria Data Protection Act 2023 (“NDPA”) and any regulations or directives issued by the Nigeria Data Protection Commission (“NDPC”).
 
-To the fullest extent permitted by law, HelpMum will not be liable to users for any loss or damage of any nature whatsoever and howsoever arising out of or in connection with the viewing, use or performance of the Website or its Content, whether due to inaccuracy, error, omission or any other cause which might have arisen either on the part of HelpMum or its Representatives.
+“Deletion Date” – the date on which you request deletion of your Account through the App.
 
-TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, WE WILL NOT BE LIABLE FOR THE ACTIONS OR INACTIONS OF ANY THIRD PARTY NOT ACTING ON OUR INSTRUCTIONS, AND WE WILL NOT BE LIABLE FOR ACTIONS OR INACTIONS NOT DIRECTLY TRACEABLE TO US.
+“Input” – any question, message, text, voice note, image or other information you submit to the App.
 
-## You may have to Indemnify us
+“Personal Data” – any information relating to an identified or identifiable individual, and includes Sensitive Personal Data.
 
-You agree to defend, indemnify, and hold HelpMum and its Representatives from and against any claims, actions or demands, liabilities and settlements including without limitation, reasonable legal and accounting fees, resulting from, or alleged to result from, your violation of these Terms.
+“Privacy Policy” – HelpMum’s Privacy Policy, as published and updated from time to time.
 
-## What about Third-Party Websites and Links?
+“Recovery Period” – the period of ninety (90) days beginning on the Deletion Date.
 
-HelpMum may provide links to other websites which might be considered beneficial to you. However, the information contained in such other websites are independent of the views of HelpMum and the use of such information shall be solely at your own risk. The inclusion of these links and connections does not indicate our endorsement of those third-party websites or services, nor does it imply any association with their owners or operators.
+“Sensitive Personal Data” – Personal Data relating to health, pregnancy, reproductive or sexual health, genetic or biometric data, and any other category treated as sensitive under the NDPA.
 
-Any information, advice, opinion, statement, comments, advertisement, services or content made available through the site by third parties including information providers are those of the third party and not HelpMum. HelpMum will not be responsible for the accuracy and reliability of any information provided on this site by anyone except as stated by an authorized HelpMum representative while acting in his/her official capacity. HelpMum does not make any representations or warranties with respect to any content or privacy practices, or otherwise with respect to such third parties or any items or services that may be obtained from such third parties.
+“Emergency” – any situation in which you or your baby may be at risk of serious harm, including the warning signs listed in Schedule 1.
 
-We do not own the rights to the content of any third-parties that are featured on this Website. All rights of these images, trademarks and intellectual property belong to their respective owners. Your access and use of such third-party websites and services is subject to applicable third-party terms and conditions and privacy policies. We encourage you to read the terms and conditions and privacy policy of each third-party website or service that you choose to visit or use.
+## 3.  ABOUT THE APP
 
-## What Law governs these Terms?
+3.1	Nature of the service: The App uses artificial intelligence, including large language models, to generate responses. Responses are produced automatically by predicting likely useful text; they are not written, reviewed or approved by a doctor, midwife, nurse or other licensed professional at the time you receive them.
 
-These Terms are governed by and construed in accordance with the Laws of the Federal Republic of Nigeria. For the resolution of any dispute arising from these Terms, the user expressly waives any specific laws of its own jurisdiction. The user irrevocably agrees that all disputes emanating from these Terms shall be resolved by mediation in accordance with the Lagos State Multi-Door Court House Rules in effect at the time being. The language of the mediation shall be in English. Notwithstanding the above, HelpMum reserves the right to take any legal action and or steps to remedy any breach which may accrue under these Terms.
+3.2	Third-party technology: The App may be built on third-party or open-weight models and software. Those components remain subject to their own licence terms, and where required we display the attribution those licences demand (for example, “Built with Llama”). Nothing in these Terms transfers to you any rights in those components.
 
-## Can these Terms Change?
+3.3	Informational purpose: The App is an educational and informational tool intended to help you understand common pregnancy, childbirth, postpartum and breastfeeding topics, and to help you prepare questions for your own healthcare provider.
 
-We reserve the right, subject to applicable law, to deliver to you any notice of changes to these Terms or the addition of new terms by publishing an updated version of these Terms on the Website or delivering notice thereof to you electronically. Your continued access or use of the Website constitutes your acceptance of such changes. It's important to note that you have the freedom to choose whether or not to accept an updated version of these Terms. However, accepting these revised Terms is a requirement for you to continue accessing or using the Website. Unless expressly stated otherwise by us, your access and use of the Website are subject to and constitute your acceptance of the version of these Terms in effect at the time of your access or use.
+3.4	Evolving service: The App may be modified, improved, restricted or discontinued, in whole or in part, at any time, as set out in clause 18.
 
-## How can you contact us?
+## 4.  ELIGIBILITY AND REGISTRATION
 
-If you have any questions, complaints, feedback comments, or concerns regarding these Terms, please contact us at info@helpmum.org.
+4.1	To use the App you must:
 
-## Miscellaneous
+(a)	be at least eighteen (18) years old;
 
-- Entire Agreement: These Terms constitute the entire agreement between you and us regarding the use of the website.
-- Severability: If any part of these Terms is deemed invalid or unenforceable by any court or tribunal, whether in whole or in part, that specific portion shall be separated from these Terms. The invalidity or unenforceability of that part shall not impact the validity or enforceability of any other part within these Terms. HelpMum undertakes to substitute the stipulation affected by the nullity, bringing it into line as far as possible with the intention originally sought by the parties.
-- No Waiver: Our failure to exercise or enforce any right or provision of these Terms shall not constitute a waiver of such right or provision or prevent a subsequent enforcement of that or any other right or provision. No waiver of any of the provisions of these Terms shall be effective unless it is expressly stated to be such and signed by both You and us.
+(b)	have the legal capacity to enter into a binding agreement under Applicable Law;
 
-© HelpMum Foundation 2024. All rights reserved.
+(c)	provide accurate, current and complete registration information and keep it up to date; and
+
+(d)	use the App only for yourself.
+
+4.2	Account security: You are responsible for keeping your login credentials confidential and for all activity under your Account. Notify us immediately at info@helpmum.org if you suspect unauthorised access. Do not share your Account or allow anyone else to use it.
+
+4.3	One account: You may hold only one active Account. We may refuse registration, or suspend or close duplicate Accounts, where we reasonably suspect misuse.
+
+4.4	Shared devices: Conversations about pregnancy and health are private. You are responsible for logging out on shared devices and for the privacy of any device on which you use the App.
+
+## 5.  MEDICAL DISCLAIMER
+
+5.1	THE APP DOES NOT PROVIDE MEDICAL ADVICE. The App and all AI Output are for general information only. They are not, and must never be treated as, medical advice, diagnosis, treatment, prescription, or a substitute for the professional judgement of a qualified doctor, midwife, nurse, pharmacist or other licensed healthcare professional.
+
+5.2	No clinician–patient relationship: Using the App does not create a doctor–patient, nurse–patient, or any other healthcare professional relationship between you and HelpMum, its personnel, its partners or the App.
+
+5.3	Always consult a professional: You should always seek the advice of a qualified healthcare provider about any pregnancy, postpartum, breastfeeding, infant or other health question or condition. Never disregard, delay or discontinue professional medical advice or treatment because of something the App has said.
+
+5.4	Emergencies: The App is not an emergency service and cannot call for help on your behalf. If you believe you or your baby may be experiencing an Emergency, including any warning sign in Schedule 1, go immediately to the nearest hospital or health facility, or call the national emergency number 112, and do not wait for a response from the App.
+
+5.5	Individual circumstances: Every pregnancy and every baby is different. AI Output is generic and cannot account for your full medical history, medications, allergies, test results, or local clinical guidelines.
+
+5.6	Medicines and supplements: Do not start, stop, change, or combine any medicine, herbal remedy or supplement because of AI Output. Confirm with a pharmacist or your healthcare provider first.
+
+## 6.  LIMITATIONS OF AI
+
+6.1	You acknowledge and accept that AI systems have inherent limitations, and that:
+
+(a)	AI Output may be incomplete, inaccurate, outdated, misleading or inappropriate, and may sometimes present incorrect information confidently (often called “hallucination”);
+
+(b)	the App may misunderstand your question, your language, local expressions, dialect or context, particularly where Inputs are in languages with limited AI support;
+
+(c)	AI Output may reflect biases present in the data on which the underlying models were trained;
+
+(d)	the App may not reflect the latest clinical guidance, drug approvals or public health alerts;
+
+(e)	similar or identical AI Output may be generated for other users; and
+
+(f)	the App cannot examine you or your baby, interpret test results or scans, or detect conditions that need physical assessment.
+
+6.2	You are responsible for your decisions: You are solely responsible for deciding whether and how to act on AI Output. We recommend you verify any important information with a qualified healthcare provider before relying on it.
+
+6.3	Reporting concerns: If you receive AI Output that appears wrong, harmful, offensive or unsafe, please stop relying on it and report it to us at info@helpmum.org or through the in-App feedback feature.
+
+## 7.  WHAT THE APP IS NOT FOR
+
+7.1	The App is a general information tool for pregnancy and nursing support only. You must not use the App, and the App must not be relied upon, for any of the following:
+
+(a)	Emergencies: obtaining help in a medical, obstetric, neonatal or mental health emergency, or in any situation involving risk to life or serious harm;
+
+(b)	Diagnosis: diagnosing, confirming or ruling out any illness, pregnancy complication, infection, congenital condition, or any condition affecting you or your baby;
+
+(c)	Treatment and prescriptions: deciding on treatment, prescribing, recommending or adjusting any medicine, dosage, vaccine schedule, supplement or therapy;
+
+(d)	Replacing professional care: replacing antenatal care, postnatal care, scheduled clinic visits, scans, laboratory tests, immunisation appointments, or any consultation with a qualified healthcare professional;
+
+(e)	Deciding on delivery: making decisions about the place, method, timing or management of labour and delivery, or whether to accept or refuse recommended clinical care;
+
+(f)	Mental health crises: managing suicidal thoughts, self-harm, severe postpartum depression, psychosis, or any mental health crisis. If you are in distress, contact a healthcare provider, a trusted person or emergency services immediately;
+
+(g)	Abuse and safety: reporting or responding to domestic violence, abuse, exploitation, neglect or any threat to your safety or your child’s safety;
+
+(h)	Unlawful or unsafe pregnancy-related acts: seeking instructions to cause, procure or attempt anything contrary to Applicable Law, including any unlawful termination of pregnancy, or to harm any person;
+
+(i)	Other persons’ care: providing health advice about any person other than yourself and your own baby, or use by a healthcare worker as a clinical decision-support tool in the care of patients, unless HelpMum has expressly authorised that use in writing;
+
+(j)	Legal, financial or insurance advice: obtaining legal, financial, insurance, immigration or employment advice;
+
+(k)	Automated decisions: any decision with legal or similarly significant effect on any person, including decisions about eligibility for services, insurance, employment or benefits; or
+
+(l)	Research or commercial purposes: any research, clinical study, product development, model training, benchmarking or commercial purpose, unless HelpMum has expressly agreed in writing.
+
+7.2	We may update this list from time to time. Any use of the App for the purposes above is at your own risk and is a breach of these Terms.
+
+## 8.  ACCEPTABLE USE AND PROHIBITED CONDUCT
+
+8.1	You may use the App only for lawful, personal, non-commercial purposes consistent with these Terms.
+
+8.2	You must not:
+
+(a)	submit unlawful, harmful, abusive, harassing, defamatory, obscene, discriminatory or hateful content, or content that exploits or endangers any child;
+
+(b)	submit Personal Data of any other person (including your partner, relatives, children other than your own baby, or healthcare providers) without a lawful basis and their consent;
+
+(c)	impersonate any person, or provide false identity, location or health information with intent to mislead the App or us;
+
+(d)	attempt to bypass, disable, test or probe the App’s safety measures, filters or restrictions (including by “jailbreaking” or prompt-injection techniques) or to induce the App to produce harmful, unsafe or prohibited output;
+
+(e)	copy, scrape, harvest, mine or systematically extract AI Output, data, prompts or other content from the App by automated or manual means;
+
+(f)	use the App or AI Output to train, fine-tune, benchmark, distil or build any competing artificial intelligence model, product or service;
+
+(g)	reverse-engineer, decompile, disassemble, or attempt to discover the source code, model weights, system prompts or underlying architecture of the App, except to the extent Applicable Law permits and cannot be excluded;
+
+(h)	interfere with, overload or disrupt the App, its servers or networks, or introduce any virus, malware or harmful code;
+
+(i)	access or attempt to access another user’s Account, data or conversations;
+
+(j)	sell, resell, license, sub-license, rent, publish, or commercially exploit the App or AI Output, or present AI Output as professional medical advice to others;
+
+(k)	remove, obscure or alter any proprietary notice, branding or attribution in the App; or
+
+(l)	use the App in any manner that violates Applicable Law or the rights of any person.
+
+8.3	Consequences: We may investigate suspected breaches and may suspend or terminate your Account, remove content, and report unlawful activity to the appropriate authorities.
+
+## 9.  ACCOUNT DELETION AND RECOVERY
+
+9.1	Your right to delete: You may delete your Account at any time through the account settings of the App. Deleting or uninstalling the App from your device does not delete your Account.
+
+9.2	Immediate effect: Once you request deletion, your Account is deactivated immediately. You will no longer be able to log in, and your Account will not be accessible to other users or used to provide the App.
+
+9.3	90-day Recovery Period: For ninety (90) days from the Deletion Date (the Recovery Period), your Account and associated data are held in a restricted, inactive state solely so that you can recover your Account if you change your mind or deleted it by mistake.
+
+9.4	How to recover your Account: To recover your Account, you must send a recovery request by email to info@helpmum.org within the Recovery Period. Your request should:
+
+(a)	be sent from the email address registered to your Account (or include the phone number or other details registered to it);
+
+(b)	state your full name and the approximate Deletion Date; and
+
+(c)	include any additional information we reasonably request to verify that you are the Account owner.
+
+9.5	Verification: To protect your privacy and safety, we will only restore an Account after we have reasonably verified your identity. We may decline a recovery request that we cannot verify.
+
+9.6	Effect of recovery: If your recovery request is verified and approved within the Recovery Period, your Account will be reactivated and restored, as far as is technically possible, to the state it was in on the Deletion Date.
+
+9.7	Permanent deletion after 90 days: If we do not receive a valid recovery request within the Recovery Period, your Account will be permanently and irreversibly deleted when the Recovery Period ends. After that date, your Account and your conversation history cannot be recovered under any circumstances, and any recovery request received after the Recovery Period will not be honoured. You will be free to register a new Account, but it will not restore any previous Account or history.
+
+9.8	Limited exceptions: Permanent deletion does not apply to: (a) information we are required to retain under Applicable Law, or need to retain to establish, exercise or defend legal claims, for only as long as that requirement lasts; and (b) information that has been irreversibly anonymised or aggregated so that it can no longer identify you, which we may continue to use for the purposes described in the Privacy Policy. Residual copies in secure backups, if any, are overwritten in the ordinary backup cycle and are not used for any other purpose in the meantime.
+
+9.9	Suspended or terminated Accounts: If your Account has been suspended or terminated by us for breach of these Terms, we may decline to restore it, even within the Recovery Period.
+
+9.10	Consequences of deletion: Deleting your Account does not affect rights or liabilities that accrued before the Deletion Date, or any clause of these Terms intended to survive termination. If you have shared any information with third parties (for example, a healthcare provider) independently of the App, deletion of your Account will not delete the copies held by those third parties.
+
+## 10.  YOUR DATA AND PRIVACY
+
+10.1	Sensitive nature of your Data: You acknowledge that information about pregnancy, reproductive health, childbirth, breastfeeding and your baby’s health is Sensitive Personal Data, which we treat with heightened care. We process it in accordance with Applicable Law and our Privacy Policy.
+
+10.2	Our role: HelpMum is registered with the NDPC as a Data Controller and Data Processor of Major Importance and undertakes annual compliance audits as required by the NDPA. We are responsible for the Personal Data we collect through the App as a data controller.
+
+10.3	What we collect: We collect Personal Data you provide at registration and through your use of the App, which may include:
+
+(a)	account information (such as your name, contact details, and language preference);
+
+(b)	your Inputs and the AI Output generated in response, including health-related information you choose to share; and
+
+(c)	technical information (such as device type, app version, and usage logs) needed to operate, secure and improve the App.
+
+10.4	Consent: We obtain your informed consent at registration to process your Personal Data, including Sensitive Personal Data, for the purposes described in the Privacy Policy. Where we wish to use your data for a new, secondary purpose, we will ensure that your existing consent is adequate or we will obtain fresh consent. You may withdraw consent at any time by deleting your Account under clause 9 or by contacting us; withdrawal does not affect processing carried out before withdrawal, and may mean you can no longer use the App.
+
+10.5	How we use your data: We use your Personal Data to:
+
+(a)	provide, personalise, maintain and secure the App;
+
+(b)	respond to your queries, support requests and recovery requests;
+
+(c)	monitor safety, detect abuse, and improve the quality, accuracy and safety of the App, using anonymised or de-identified data wherever possible;
+
+(d)	comply with our legal and regulatory obligations; and
+
+(e)	any other purpose described in the Privacy Policy, or for which you have given consent.
+
+10.6	Security: Your data is stored in an encrypted and secured database and is accessible only to authorised personnel who are bound by confidentiality obligations and receive regular data protection training. No system is completely secure, and we cannot guarantee absolute security; you are responsible for keeping your credentials and device secure.
+
+10.7	No sale; limited sharing: We do not sell your Personal Data. We do not share your Personal Data with third parties as a matter of course. Where sharing is necessary to deliver a project or the App, it is governed by non-disclosure and data sharing agreements; only anonymised data is shared with external partners, who are contractually prohibited from attempting to re-identify individuals or using data beyond the agreed scope. We may disclose Personal Data where required by law, court order or a competent regulator, or where necessary to protect life.
+
+10.8	Impact assessment: Before any new data activity begins, we conduct a Data Protection Impact Assessment to verify that anonymisation is robust and that re-identification is not possible.
+
+10.9	Your rights: Subject to Applicable Law, you have the right to be informed about, and to access, correct, delete, restrict or object to the processing of your Personal Data, to data portability, and to lodge a complaint with the NDPC. To exercise your rights, contact us at legal@helpmum.org.
+
+10.10	Retention: We keep Personal Data only for as long as needed for the purposes for which it was collected, subject to clause 9 and the Privacy Policy.
+
+10.11	Do not over-share: Please share only the information you are comfortable sharing and that is needed to ask your question. Avoid including identity documents, financial details, passwords or other people’s Personal Data in your Inputs.
+
+10.12	Cross-border processing: If your Personal Data is transferred outside Nigeria, we will do so only in accordance with the NDPA and with appropriate safeguards, as described in the Privacy Policy.
+
+## 11.  CONTENT AND LICENCES
+
+11.1	Your Input: You retain ownership of your Input. You grant HelpMum a limited, non-exclusive, worldwide, royalty-free licence to host, process, store and use your Input solely to operate and provide the App to you, to maintain safety and security, to comply with law, and for any additional purpose for which you have given your consent. This licence ends when your Account is permanently deleted, subject to clause 9.8.
+
+11.2	AI Output: Subject to these Terms, HelpMum grants you a personal, non-exclusive, non-transferable, revocable licence to use AI Output for your own personal, non-commercial purposes. We do not guarantee that AI Output is original, unique or free from similarity to content generated for others, and AI Output may not be protected by copyright.
+
+11.3	Feedback: If you give us ideas, comments or suggestions about the App, you grant us a perpetual, royalty-free licence to use them without any obligation to you, provided that we do not publish your identity or Personal Data.
+
+## 12.  INTELLECTUAL PROPERTY
+
+12.1	The App, including its software, design, user interface, text, graphics, logos, trade names, trademarks (including “MamaBot AI” and “HelpMum”), system prompts, datasets, documentation and all related intellectual property rights, are owned by or licensed to HelpMum and are protected by Nigerian and international intellectual property laws and treaties.
+
+12.2	We grant you a limited, personal, non-exclusive, non-transferable, non-sublicensable and revocable licence to download, install and use the App on your personal device for your own personal use, in accordance with these Terms. All rights not expressly granted are reserved.
+
+12.3	Open-source, open-weight and third-party components included in the App are licensed under their own terms, which prevail over these Terms to the extent of any conflict in relation to those components. You must not use those components, or the App, in a manner that would put HelpMum in breach of those licences or acceptable use policies.
+
+12.4	Nothing in these Terms permits you to use HelpMum’s names, logos or trademarks without our prior written consent.
+
+## 13.  FEES
+
+13.1	Access to the App is currently provided free of charge. We may introduce fees or premium features in the future, in which case we will give you reasonable prior notice and any applicable fees and payment terms will be set out before you incur any charge. You are responsible for your own mobile data and internet charges.
+
+## 14.  THIRD-PARTY LINKS AND SERVICES
+
+14.1	The App may link to or refer to third-party websites, health facilities, directories or resources. We do not control or endorse them and are not responsible for their content, services or privacy practices. Your use of third-party services is at your own risk and subject to their terms.
+
+## 15.  DISCLAIMER OF WARRANTIES
+
+15.1	To the fullest extent permitted by Applicable Law, the App and AI Output are provided “as is” and “as available”, without warranties of any kind, whether express or implied, including any warranty of accuracy, completeness, reliability, merchantability, fitness for a particular purpose, non-infringement, or uninterrupted, timely, secure or error-free operation.
+
+15.2	We do not warrant that AI Output is medically accurate, safe, suitable for your circumstances, or current, or that the App will meet your requirements or be available at all times.
+
+## 16.  LIMITATION OF LIABILITY
+
+16.1	Nothing in these Terms excludes or limits liability that cannot lawfully be excluded or limited under Applicable Law, including liability for fraud, wilful misconduct, or death or personal injury caused by negligence to the extent that Applicable Law does not permit such exclusion.
+
+16.2	Subject to clause 16.1, and to the fullest extent permitted by Applicable Law, HelpMum, its trustees, directors, officers, employees, volunteers, partners, licensors and service providers will not be liable for any indirect, incidental, special, consequential or punitive loss, or for any loss of data, goodwill or profits, arising out of or in connection with your use of or inability to use the App, or your reliance on AI Output.
+
+16.3	Subject to clause 16.1, and to the fullest extent permitted by Applicable Law, HelpMum’s total aggregate liability to you arising out of or in connection with these Terms or the App, whether in contract, tort (including negligence), breach of statutory duty or otherwise, will not exceed ₦5,000.
+
+16.4	You acknowledge that these limitations reflect a fair allocation of risk given that the App is an information tool and that you have been clearly told to seek professional medical care and to treat Emergencies as outside the scope of the App.
+
+## 17.  INDEMNITY
+
+17.1	To the extent permitted by Applicable Law, you agree to indemnify and hold harmless HelpMum and its trustees, directors, officers, employees, volunteers and partners against any claims, losses, liabilities, damages and reasonable costs (including legal fees) arising from your breach of these Terms, your unlawful use of the App, or your infringement of any third party’s rights.
+
+## 18.  SUSPENSION, TERMINATION AND CHANGES TO THE APP
+
+18.1	Suspension and termination by us: We may suspend, restrict or terminate your access to the App immediately and without prior notice if we reasonably believe you have breached these Terms, that your use poses a risk to safety or security, or where required by law. Where practicable, we will tell you why.
+
+18.2	Termination by you: You may stop using the App at any time and may delete your Account in accordance with clause 9.
+
+18.3	Changes to the App: We may modify, upgrade, suspend or discontinue any feature or the whole of the App, including for maintenance, safety, legal, technical or funding reasons. We will use reasonable efforts to give notice of material changes or discontinuation, but are not liable for any changes or interruptions.
+
+18.4	Survival. Clauses that by their nature should survive termination (including clauses 5, 6, 7, 9, 10, 11, 12, 15, 16, 17 and 20) will survive.
+
+## 19.  CHANGES TO THESE TERMS
+
+19.1	We may update these Terms from time to time to reflect changes in law, technology, or our practices. We will notify you of material changes through the App, by email, or by another reasonable means, and will update the “Last Updated” date. Where the change materially affects your rights, we will ask for your fresh acceptance. Your continued use of the App after the effective date of the updated Terms, or your failure to delete your Account, constitutes acceptance of them, except where Applicable Law requires express consent.
+
+## 20.  GOVERNING LAW AND DISPUTE RESOLUTION
+
+20.1	These Terms, and any dispute or claim arising out of or in connection with them (including non-contractual disputes), are governed by the laws of the Federal Republic of Nigeria.
+
+20.2	Amicable resolution: The parties will first try in good faith to resolve any dispute through discussion for a period of thirty (30) days after written notice of the dispute is given. You may raise a dispute by writing to legal@helpmum.org/info@helpmum.org
+
+20.3	Arbitration: Any dispute not resolved under clause 20.2 will be referred to and finally resolved by arbitration under the Arbitration and Mediation Act 2023. The tribunal will consist of a sole arbitrator appointed by agreement or, failing agreement within fourteen (14) days, by the appropriate appointing authority under that Act. The seat of arbitration will be Lagos, Nigeria, the language will be English, and the award will be final and binding.
+
+20.4	Courts: Nothing in this clause prevents either party from seeking urgent interim or injunctive relief from a competent court in Lagos State, or prevents you from exercising any statutory right to complain to a regulator (including the NDPC) or to bring a claim in a forum that cannot lawfully be excluded under Applicable Law.
+
+## 21.  GENERAL PROVISIONS
+
+21.1	Entire agreement: These Terms and the Privacy Policy are the entire agreement between you and HelpMum relating to the App and supersede all prior understandings on that subject.
+
+21.2	Severability: If any provision of these Terms is held invalid, illegal or unenforceable, the rest will remain in full force, and the affected provision will be modified to the minimum extent necessary to make it enforceable.
+
+21.3	No waiver: A failure or delay in exercising any right is not a waiver of that right.
+
+21.4	Assignment: You may not assign or transfer your rights or obligations under these Terms. HelpMum may assign or transfer them to any affiliate or successor to the App on notice to you.
+
+21.5	Force majeure: HelpMum is not liable for any failure or delay caused by events beyond its reasonable control, including power or network failures, third-party service outages, natural disasters, civil unrest, or governmental action.
+
+21.6	Third-party rights: Except as expressly stated, no person other than you and HelpMum has any right to enforce these Terms.
+
+21.7	Language: These Terms are made in English. Any translation is for convenience only, and the English version prevails in case of conflict.
+
+21.8	Notices: We may give notice to you through the App, by email or by SMS using the details you provided. You may give notice to us using the contact details in clause 22.
+
+## 22.  CONTACT US
+
+22.1	For questions about these Terms, to report a concern, or to exercise your data rights, contact:
+
+“HelpMum Africa Foundation” – PWAN Building, Jakande First Gate, Lekki Phase 2, Lagos State, Nigeria.
+
+“General and support” – info@helpmum.org
+
+“Data protection” – legal@helpmum.org
+
+“Account recovery (within 90 days of deletion)” – info@helpmum.org
+
+## SCHEDULE 1
+
+## EMERGENCY WARNING SIGNS
+
+If you experience or notice any of the following, go to the nearest hospital or health facility immediately, or call 112. Do not wait for a response from the App. This list is a general guide only. It is not exhaustive, and you should seek urgent help whenever you feel something is seriously wrong.
+
+During pregnancy
+
+(a)	Vaginal bleeding;
+
+(b)	Severe or persistent headache, blurred vision or flashing lights;
+
+(c)	Convulsions or fits, or loss of consciousness;
+
+(d)	Severe abdominal pain;
+
+(e)	Reduced or absent baby movements;
+
+(f)	Sudden swelling of the face or hands, or severe swelling of the legs;
+
+(g)	High fever or severe weakness;
+
+(h)	Leaking of fluid from the vagina or contractions before the expected time;
+
+(i)	Difficulty breathing or chest pain.
+
+After delivery
+
+(a)	Heavy bleeding that soaks a pad within an hour, or passing large clots;
+
+(b)	Fever, chills or foul-smelling vaginal discharge;
+
+(c)	Severe headache, blurred vision or convulsions;
+
+(d)	Chest pain, difficulty breathing or leg pain with swelling;
+
+(e)	A red, hot, painful, swollen breast with fever;
+
+(f)	Thoughts of harming yourself or your baby, or feeling unable to cope.
+
+Your newborn or baby
+
+(a)	Not feeding, or feeding very poorly;
+
+(b)	Fever, or an unusually cold body;
+
+(c)	Fast or difficult breathing, or bluish colour of the skin or lips;
+
+(d)	Convulsions, floppiness, or being unusually sleepy or hard to wake;
+
+(e)	Yellowing of the skin or eyes in the first days of life;
+
+(f)	Persistent vomiting, or signs of dehydration;
+
+(g)	Red, swollen or pus-discharging umbilical cord stump.
+
+National emergency number: 112
