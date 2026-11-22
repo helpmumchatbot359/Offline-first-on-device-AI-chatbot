@@ -304,6 +304,15 @@ class _ActivationPageState extends State<ActivationPage> {
                                   : colors.onSurfaceVariant,
                             ),
                           ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Tip: copy the code from your email and paste it '
+                            'into any box.',
+                            textAlign: TextAlign.center,
+                            style: textTheme.bodySmall?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
                           const SizedBox(height: 20),
                           SizedBox(
                             width: double.infinity,
@@ -369,84 +378,79 @@ class _ActivationPageState extends State<ActivationPage> {
   }) {
     final typedLength = _code.length;
 
-    // One group + a one-time-code hint on the first box lets Android/iOS
-    // offer the emailed code as a one-tap keyboard suggestion. If the OS
-    // dumps all six digits into that first box, our paste handler spreads
-    // them across the others and auto-submits.
-    return AutofillGroup(
-      child: Row(
-        children: List.generate(_codeLength, (index) {
-          final active = index == typedLength && !_expired;
-          final borderColor = hasError
-              ? colors.error
-              : active
-              ? colors.primary
-              : colors.outlineVariant;
+    // Six visible fields with no autofill hint. The one-time-code hint made
+    // Android show a stuck "Waiting for code…" chip for email codes (it only
+    // reliably detects SMS), which blocked typing. Typing and pasting work
+    // without it.
+    return Row(
+      children: List.generate(_codeLength, (index) {
+        final active = index == typedLength && !_expired;
+        final borderColor = hasError
+            ? colors.error
+            : active
+            ? colors.primary
+            : colors.outlineVariant;
 
-          return Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(right: index == _codeLength - 1 ? 0 : 8),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                height: 56,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: colors.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: borderColor,
-                    width: active || hasError ? 2 : 1,
-                  ),
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(right: index == _codeLength - 1 ? 0 : 8),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              height: 56,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: borderColor,
+                  width: active || hasError ? 2 : 1,
                 ),
-                child: Semantics(
-                  label: 'Digit ${index + 1} of $_codeLength',
-                  child: TextField(
-                    controller: _controllers[index],
-                    focusNode: _focusNodes[index],
-                    textAlign: TextAlign.center,
-                    keyboardType: TextInputType.number,
-                    autofillHints: index == 0
-                        ? const [AutofillHints.oneTimeCode]
-                        : null,
-                    textInputAction: index == _codeLength - 1
-                        ? TextInputAction.done
-                        : TextInputAction.next,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: colors.onSurface,
-                    ),
-                    decoration: const InputDecoration(
-                      // AppTheme gives every field a filled outline by
-                      // default. Clear *every* state here, otherwise each
-                      // digit box draws a second border inside ours.
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      disabledBorder: InputBorder.none,
-                      errorBorder: InputBorder.none,
-                      focusedErrorBorder: InputBorder.none,
-                      filled: false,
-                      counterText: '',
-                      contentPadding: EdgeInsets.zero,
-                      isDense: true,
-                    ),
-                    onTap: () {
-                      final controller = _controllers[index];
-                      controller.selection = TextSelection(
-                        baseOffset: 0,
-                        extentOffset: controller.text.length,
-                      );
-                    },
-                    onChanged: (value) => _handleChanged(index, value),
-                    onSubmitted: (_) => _submit(),
+              ),
+              child: Semantics(
+                label: 'Digit ${index + 1} of $_codeLength',
+                child: TextField(
+                  controller: _controllers[index],
+                  focusNode: _focusNodes[index],
+                  textAlign: TextAlign.center,
+                  keyboardType: TextInputType.number,
+                  textInputAction: index == _codeLength - 1
+                      ? TextInputAction.done
+                      : TextInputAction.next,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: colors.onSurface,
                   ),
+                  decoration: const InputDecoration(
+                    // AppTheme gives every field a filled outline by
+                    // default. Clear *every* state here, otherwise each
+                    // digit box draws a second border inside ours.
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    focusedErrorBorder: InputBorder.none,
+                    filled: false,
+                    counterText: '',
+                    contentPadding: EdgeInsets.zero,
+                    isDense: true,
+                  ),
+                  onTap: () {
+                    final controller = _controllers[index];
+                    controller.selection = TextSelection(
+                      baseOffset: 0,
+                      extentOffset: controller.text.length,
+                    );
+                  },
+                  onChanged: (value) => _handleChanged(index, value),
+                  onSubmitted: (_) => _submit(),
                 ),
               ),
             ),
-          );
-        }),
-      ),
+          ),
+        );
+      }),
     );
   }
 }

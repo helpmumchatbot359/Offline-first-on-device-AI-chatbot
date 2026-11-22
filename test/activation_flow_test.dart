@@ -255,6 +255,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(TextField), findsNWidgets(6));
+    expect(find.byType(AutofillGroup), findsNothing);
     expect(find.byType(AnimatedContainer), findsNWidgets(6));
     // No second outline/background should be drawn inside each box by the
     // global InputDecorationTheme (that used to make them look doubled).
