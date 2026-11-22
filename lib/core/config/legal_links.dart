@@ -1,6 +1,6 @@
 class LegalLinks {
   static const String terms =
-      'https://helpmumchatbot359.github.io/Offline-first-on-device-AI-chatbot/mamabot-legal/terms.html';
+      'https://mamabot-legal.netlify.app/terms.html';
   static const String privacy =
-      'https://helpmumchatbot359.github.io/Offline-first-on-device-AI-chatbot/mamabot-legal/privacy.html';
+      'https://mamabot-legal.netlify.app/privacy.html';
 }

@@ -48,4 +48,4 @@ Legal@helpmum.org
 
 - ☐	I agree to the Terms of Use.
 
-Read our full Privacy Policy: https://helpmumchatbot359.github.io/Offline-first-on-device-AI-chatbot/mamabot-legal/privacy.html
+Read our full Privacy Policy: https://mamabot-legal.netlify.app/privacy.html

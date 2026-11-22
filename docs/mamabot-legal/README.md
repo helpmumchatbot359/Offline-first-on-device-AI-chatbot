@@ -9,33 +9,24 @@ They are deliberately separate from HelpMum's general website pages:
 
 Do **not** replace those general pages.
 
-## Live GitHub Pages URLs
+## Live URLs
 
-After GitHub Pages is enabled for this repository, the pages will be:
+The pages are hosted on Netlify (public, HTTPS):
 
 ```text
-https://helpmumchatbot359.github.io/Offline-first-on-device-AI-chatbot/mamabot-legal/terms.html
-https://helpmumchatbot359.github.io/Offline-first-on-device-AI-chatbot/mamabot-legal/privacy.html
+https://mamabot-legal.netlify.app/terms.html
+https://mamabot-legal.netlify.app/privacy.html
 ```
 
-## Enable GitHub Pages
+Landing page:
 
-1. Go to the repository on GitHub:
+```text
+https://mamabot-legal.netlify.app/
+```
 
-   ```text
-   https://github.com/helpmumchatbot359/Offline-first-on-device-AI-chatbot
-   ```
+Netlify project: `mamabot-legal` in the Netlify account signed in as `chatbot@helpmum.org`. It is set to **Public** (anyone with the address can open it).
 
-2. Open **Settings**.
-3. Open **Pages** (under *Code and automation*).
-4. Under **Build and deployment**:
-   - **Source:** `Deploy from a branch`
-   - **Branch:** `main`
-   - **Folder:** `/docs`
-5. Click **Save**.
-6. Wait 1–2 minutes, then open the two URLs above.
-
-The MamaBot legal pages are in `docs/mamabot-legal/`, so they will be served automatically from the `/docs` folder.
+The HTML files still live in this `docs/mamabot-legal/` folder as the source of truth. A GitHub Pages copy also exists, but the user's network refuses connections to `github.io`, so Netlify is the URL used by the app and Play Console.
 
 ## Update the documents later
 
@@ -45,14 +36,14 @@ The HTML pages are generated from the app's Markdown files. After editing either
 python3 tools/build_legal_pages.py
 ```
 
-Then commit and push the generated `docs/mamabot-legal/*.html` files.
+Then commit and push the generated `docs/mamabot-legal/*.html` files. If the wording shown to users changes, also upload the updated `terms.html`, `privacy.html` and `index.html` to the Netlify project (`mamabot-legal`) so the live pages match.
 
 ## Google Play Console
 
 Set the Privacy Policy URL to:
 
 ```text
-https://helpmumchatbot359.github.io/Offline-first-on-device-AI-chatbot/mamabot-legal/privacy.html
+https://mamabot-legal.netlify.app/privacy.html
 ```
 
 ## If you later get a nicer MamaBot domain
