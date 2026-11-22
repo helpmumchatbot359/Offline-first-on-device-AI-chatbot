@@ -1,10 +1,8 @@
 // REPLACES  lib/main.dart  (search for "TELEMETRY" to see what changed)
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app.dart';
-import 'core/config/env.dart';
 import 'core/network/api_client.dart';
 import 'core/security/token_storage.dart';
 import 'core/theme/theme_bloc/theme_bloc.dart';
@@ -21,10 +19,6 @@ import 'features/chat/data/telemetry/telemetry_recorder.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  if (kDebugMode && Env.apiKey.isEmpty) {
-    debugPrint('WARNING: MAMABOT_AI_API_KEY is empty.');
-  }
 
   // 1) Secure storage (token, theme, local ids)
   final tokenStorage = TokenStorage();

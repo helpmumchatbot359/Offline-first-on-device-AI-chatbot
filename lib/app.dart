@@ -12,6 +12,7 @@ import 'core/widgets/mama_logo.dart';
 import 'features/auth/domain/auth_repository.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 import 'features/auth/presentation/events/auth_event.dart';
+import 'features/auth/presentation/pages/activation_page.dart';
 import 'features/auth/presentation/states/auth_state.dart';
 import 'features/chat/data/ai/model_setup_service.dart';
 import 'features/chat/data/sync/sync_service.dart';
@@ -124,6 +125,8 @@ class AuthGate extends StatelessWidget {
                 body: MamaBackground(child: Center(child: MamaLogo(size: 110))),
               ),
             );
+          case AuthStatus.pendingActivation:
+            return const ActivationPage();
           case AuthStatus.authenticated:
             return MultiBlocProvider(
               providers: [

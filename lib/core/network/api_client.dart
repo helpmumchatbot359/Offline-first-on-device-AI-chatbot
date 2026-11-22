@@ -18,7 +18,6 @@ class ApiClient {
           connectTimeout: const Duration(seconds: 20),
           receiveTimeout: const Duration(seconds: 30),
           headers: {
-            'X-API-KEY': Env.apiKey,
             'Content-Type': 'application/json',
           },
         )),
@@ -29,7 +28,6 @@ class ApiClient {
           connectTimeout: const Duration(seconds: 20),
           receiveTimeout: const Duration(seconds: 20),
           headers: {
-            'X-API-KEY': Env.apiKey,
             'Content-Type': 'application/json',
           },
         )) {
@@ -46,6 +44,10 @@ class ApiClient {
   static const _publicPaths = {
     '/user/login',
     '/user/signup',
+    // Activation uses the *pending* token, which AuthRepositoryImpl attaches
+    // by hand. Leaving it public stops the active-token interceptor from
+    // replacing it (and from trying to refresh a session that isn't there).
+    '/user/activate',
   };
   static bool _isPublic(String path) => _publicPaths.contains(path);
 
@@ -153,10 +155,10 @@ class ApiClient {
       return RefreshResult.refreshed;
     } on DioException catch (e) {
       final code = e.response?.statusCode;
-      // ONLY "wrong email or password" means the login is really over.
-      // (403 is left out on purpose: a missing API key also gives 403, and
-      //  that must never sign everybody out.)
-      if (code == 400 || code == 401) {
+      // 400/401 = wrong email or password. 403 = the server refuses this
+      // account (for example it was blocked). The old reason to ignore 403
+      // was a missing X-API-KEY, which the app no longer sends at all.
+      if (code == 400 || code == 401 || code == 403) {
         await _expireSession();
         return RefreshResult.rejected;
       }

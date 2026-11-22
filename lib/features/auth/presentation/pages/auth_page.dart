@@ -84,6 +84,13 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     super.initState();
     _isSignIn = widget.initialSignIn;
 
+    // Coming back from "this account is already active" or from an abandoned
+    // sign-up: keep the email they already typed so they don't retype it.
+    final knownEmail = context.read<AuthBloc>().state.email;
+    if (knownEmail != null && knownEmail.trim().isNotEmpty) {
+      _emailController.text = knownEmail.trim();
+    }
+
     _entrance = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -202,32 +209,9 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     }
   }
 
-  /// Turns bloc state into the two things this screen cares about:
-  /// a one-off "account created" moment and plain error messages.
+  /// Shows server errors inline, above the fields.
   void _onAuthState(AuthState state) {
     if (!mounted) return;
-
-    if (state.justSignedUp) {
-      setState(() {
-        _isSignIn = true;
-        _formKey = GlobalKey<FormState>();
-        _passwordController.clear();
-        _obscurePassword = true;
-        _acceptedTerms = false;
-        _showTermsError = false;
-        _selectedGender = null;
-        _feedback = 'Account created. Sign in to continue.';
-        _feedbackIsError = false;
-      });
-
-      // The email is still there, so put the cursor where the person needs
-      // it next. Post-frame keeps the keyboard from opening during the tab
-      // animation.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _passwordFocus.requestFocus();
-      });
-      return;
-    }
 
     if (state.error != null && state.error != _feedback) {
       setState(() {
@@ -308,9 +292,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                               slide: _cardSlide,
                               child: BlocConsumer<AuthBloc, AuthState>(
                                 listenWhen: (previous, current) =>
-                                    previous.error != current.error ||
-                                    previous.justSignedUp !=
-                                        current.justSignedUp,
+                                    previous.error != current.error,
                                 listener: (context, state) =>
                                     _onAuthState(state),
                                 builder: (context, state) =>

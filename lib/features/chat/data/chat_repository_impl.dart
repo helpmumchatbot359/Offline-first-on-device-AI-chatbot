@@ -11,7 +11,6 @@ import '../domain/chat_id.dart';
 import '../domain/chat_session.dart';
 import '../domain/chat_turn.dart';
 import '../../../core/network/api_client.dart';
-import '../../../core/config/env.dart';
 import '../../../core/security/token_storage.dart';
 import 'local/chat_local_data_source.dart';
 import 'local/diagnostic_logger.dart';
@@ -941,10 +940,6 @@ class ChatRepositoryImpl implements ChatRepository {
     String chatId,
     CancelToken cancelToken,
   ) async {
-    if (Env.apiKey.isEmpty) {
-      throw Exception('missing_api_key');
-    }
-
     // The cloud keeps the conversation on its side. The backend stores online
     // and offline turns under the same chat id, so nothing extra needs to be
     // injected into the question here.
@@ -1124,9 +1119,6 @@ class ChatRepositoryImpl implements ChatRepository {
 
   /// A kind message for the person using the app.
   String _friendlyCloudMessage(Object e) {
-    if (e.toString().contains('missing_api_key')) {
-      return 'The app is missing its API key (developer setup issue).';
-    }
     if (e.toString().contains('unexpected_reply_shape')) {
       return 'The server answered in a way the app did not understand. Please try again.';
     }
@@ -1135,7 +1127,7 @@ class ChatRepositoryImpl implements ChatRepository {
         case 401:
           return 'Your login could not be renewed. Please sign out and sign in again.';
         case 403:
-          return 'The server refused the request (403). The API key may be missing or wrong.';
+          return 'The server refused this request (403). Please sign out and sign in again.';
         case 429:
           return 'Too many requests. Please wait a moment and try again.';
         case 500:

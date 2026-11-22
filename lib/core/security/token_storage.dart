@@ -12,6 +12,33 @@ class SavedLogin {
   final String password;
 }
 
+/// A sign-up that has been accepted by the server but not verified yet.
+///
+/// The `token` is the *pending* JWT: it can only open `/user/activate`.
+/// It is kept apart from [TokenStorage]'s real access token so a half-created
+/// account is never mistaken for a signed-in person. The rest of the details
+/// are kept because "resend the code" means calling `/user/signup` again with
+/// the same values.
+class PendingSignup {
+  const PendingSignup({
+    required this.token,
+    required this.username,
+    required this.gender,
+    required this.email,
+    required this.country,
+    required this.password,
+    required this.createdAt,
+  });
+
+  final String token;
+  final String username;
+  final String gender;
+  final String email;
+  final String country;
+  final String password;
+  final DateTime createdAt;
+}
+
 /// The phone's locked safe. Everything that must stay private lives here.
 class TokenStorage {
   // Optional injection of secure storage for testing; defaults to hardware encryption.
@@ -37,11 +64,81 @@ class TokenStorage {
   static const _offlineBannerHiddenKey =
       'offline_banner_hidden'; // "hide for now" on chat
 
+  // ---- Sign-up waiting for its email code ----
+  // Separate from the real access token on purpose (see PendingSignup).
+  static const _pendingTokenKey = 'pending_token';
+  static const _pendingUsernameKey = 'pending_username';
+  static const _pendingGenderKey = 'pending_gender';
+  static const _pendingEmailKey = 'pending_email';
+  static const _pendingCountryKey = 'pending_country';
+  static const _pendingPasswordKey = 'pending_password';
+  static const _pendingCreatedAtKey = 'pending_created_at';
+
   // ---- Access token (the 8-hour JWT) ----
   Future<String?> readToken() => _s.read(key: _tokenKey);
   Future<void> saveToken(String token) =>
       _s.write(key: _tokenKey, value: token);
   Future<void> clearToken() => _s.delete(key: _tokenKey);
+
+  // ---- Pending sign-up (waiting for the emailed code) ----
+  Future<void> savePendingSignup({
+    required String token,
+    required String username,
+    required String gender,
+    required String email,
+    required String country,
+    required String password,
+  }) async {
+    await _s.write(key: _pendingTokenKey, value: token);
+    await _s.write(key: _pendingUsernameKey, value: username.trim());
+    await _s.write(key: _pendingGenderKey, value: gender.trim());
+    await _s.write(key: _pendingEmailKey, value: email.trim());
+    await _s.write(key: _pendingCountryKey, value: country.trim());
+    await _s.write(key: _pendingPasswordKey, value: password);
+    await _s.write(
+      key: _pendingCreatedAtKey,
+      value: DateTime.now().toUtc().toIso8601String(),
+    );
+  }
+
+  /// Returns null unless every piece is present, so a half-written sign-up
+  /// can never produce a confusing "verify" screen that cannot work.
+  Future<PendingSignup?> readPendingSignup() async {
+    final token = await _s.read(key: _pendingTokenKey);
+    final email = await _s.read(key: _pendingEmailKey);
+    final password = await _s.read(key: _pendingPasswordKey);
+    if (token == null ||
+        token.isEmpty ||
+        email == null ||
+        email.isEmpty ||
+        password == null ||
+        password.isEmpty) {
+      return null;
+    }
+
+    final createdAtRaw = await _s.read(key: _pendingCreatedAtKey);
+    return PendingSignup(
+      token: token,
+      username: (await _s.read(key: _pendingUsernameKey)) ?? '',
+      gender: (await _s.read(key: _pendingGenderKey)) ?? '',
+      email: email,
+      country: (await _s.read(key: _pendingCountryKey)) ?? '',
+      password: password,
+      createdAt:
+          DateTime.tryParse(createdAtRaw ?? '')?.toUtc() ??
+          DateTime.now().toUtc(),
+    );
+  }
+
+  Future<void> clearPendingSignup() async {
+    await _s.delete(key: _pendingTokenKey);
+    await _s.delete(key: _pendingUsernameKey);
+    await _s.delete(key: _pendingGenderKey);
+    await _s.delete(key: _pendingEmailKey);
+    await _s.delete(key: _pendingCountryKey);
+    await _s.delete(key: _pendingPasswordKey);
+    await _s.delete(key: _pendingCreatedAtKey);
+  }
 
   // ---- Saved login (for silent re-login) ----
   Future<void> saveCredentials({
@@ -79,6 +176,7 @@ class TokenStorage {
   /// Theme and offline-model preferences belong to this phone, so they remain.
   Future<void> clearAccountData() async {
     await clearSession();
+    await clearPendingSignup();
     await _s.delete(key: _userIdKey);
     await _s.delete(key: _chatIdKey);
     await _s.delete(key: _profileNameKey);

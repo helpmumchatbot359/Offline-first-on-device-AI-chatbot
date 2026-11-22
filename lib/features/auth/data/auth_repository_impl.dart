@@ -51,7 +51,7 @@ class AuthRepositoryImpl implements AuthRepository {
     required String password,
   }) async {
     try {
-      await _apiClient.dio.post(
+      final response = await _apiClient.dio.post(
         '/user/signup',
         data: {
           'username': username,
@@ -61,8 +61,28 @@ class AuthRepositoryImpl implements AuthRepository {
           'password': password,
         },
       );
-      // Keep the friendly name on this phone so the account feels personal
-      // as soon as the person signs in.
+
+      final data = response.data;
+      final pendingToken = data is Map ? data['access_token'] : null;
+      if (pendingToken is! String || pendingToken.isEmpty) {
+        throw AuthException(
+          'The server did not start the verification. Please try again.',
+        );
+      }
+
+      // The account exists but is NOT active. Keep the temporary JWT in its
+      // own slot so the rest of the app never treats this as a real login.
+      await _tokenStorage.savePendingSignup(
+        token: pendingToken,
+        username: username,
+        gender: gender,
+        email: email,
+        country: country,
+        password: password,
+      );
+
+      // Keep the friendly name on this phone so the verification screen can
+      // greet the person by name.
       await _tokenStorage.saveProfileEmail(email);
       await _tokenStorage.saveProfileName(username);
     } on DioException catch (e) {
@@ -84,18 +104,159 @@ class AuthRepositoryImpl implements AuthRepository {
       if (accessToken is! String || accessToken.isEmpty) {
         throw AuthException('The server did not return an access token.');
       }
-      await _setLocalAccountOwner?.call(
-        TokenStorage.accountOwnerForEmail(email),
+      await _completeSignIn(
+        email: email,
+        password: password,
+        token: accessToken,
       );
-      // A sign-in starts with a fresh blank conversation. Existing chats stay
-      // in the account's history instead of remaining the active chat.
-      await _tokenStorage.resetChatSession();
-      await _tokenStorage.saveToken(accessToken);
-      // Keep the login in the locked safe so we can renew the 8-hour JWT silently.
-      await _tokenStorage.saveCredentials(email: email, password: password);
-      await _tokenStorage.saveProfileEmail(email);
     } on DioException catch (e) {
+      // A pending account cannot log in. Tell the UI why, so it can take the
+      // person to the code screen instead of showing "wrong password".
+      if (e.response?.statusCode == 403) {
+        throw AuthException(
+          'This account is not activated yet. Enter the code we emailed you, '
+          'or sign up again to get a new one.',
+          code: 'pending_activation',
+        );
+      }
       throw AuthException(_messageFrom(e, 'Sign in failed. Please try again.'));
+    }
+  }
+
+  /// Shared by sign-in and activation: from this point the person is fully
+  /// signed in, so both paths must leave the phone in exactly the same state.
+  Future<void> _completeSignIn({
+    required String email,
+    required String password,
+    required String token,
+  }) async {
+    await _setLocalAccountOwner?.call(
+      TokenStorage.accountOwnerForEmail(email),
+    );
+    // A sign-in starts with a fresh blank conversation. Existing chats stay
+    // in the account's history instead of remaining the active chat.
+    await _tokenStorage.resetChatSession();
+    await _tokenStorage.saveToken(token);
+    // Keep the login in the locked safe so we can renew the 8-hour JWT silently.
+    await _tokenStorage.saveCredentials(email: email, password: password);
+    await _tokenStorage.saveProfileEmail(email);
+  }
+
+  @override
+  Future<bool> hasPendingActivation() async =>
+      (await _tokenStorage.readPendingSignup()) != null;
+
+  @override
+  Future<String?> pendingActivationEmail() async =>
+      (await _tokenStorage.readPendingSignup())?.email;
+
+  @override
+  Future<DateTime?> pendingActivationExpiresAt() async {
+    final pending = await _tokenStorage.readPendingSignup();
+    return pending?.createdAt.add(_activationWindow);
+  }
+
+  /// The server accepts a code for 10 minutes after it was sent.
+  static const _activationWindow = Duration(minutes: 10);
+
+  @override
+  Future<ActivationResult> activate({required String code}) async {
+    final pending = await _tokenStorage.readPendingSignup();
+    if (pending == null) {
+      throw AuthException(
+        'Your verification session has expired. Please sign up again.',
+        code: 'no_pending',
+      );
+    }
+
+    try {
+      final response = await _apiClient.dio.post(
+        '/user/activate',
+        data: {'code': code.trim()},
+        // The pending JWT is attached by hand: ApiClient deliberately does not
+        // put the active token on this public route.
+        options: Options(
+          headers: {'Authorization': 'Bearer ${pending.token}'},
+        ),
+      );
+
+      final data = response.data;
+      final activeToken = data is Map ? data['access_token'] : null;
+      if (activeToken is! String || activeToken.isEmpty) {
+        throw AuthException('The server did not activate the account.');
+      }
+
+      await _completeSignIn(
+        email: pending.email,
+        password: pending.password,
+        token: activeToken,
+      );
+      // saveProfileEmail may clear the name if this is a different account;
+      // write the chosen username back afterwards.
+      await _tokenStorage.saveProfileName(pending.username);
+      await _tokenStorage.clearPendingSignup();
+      return ActivationResult.activated;
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == 409) {
+        // Already active: the pending token is now useless, so clean it up.
+        await _tokenStorage.clearPendingSignup();
+        return ActivationResult.alreadyActive;
+      }
+      if (status == 400) {
+        throw AuthException(
+          _messageFrom(
+            e,
+            'That code is not valid or has expired. Please try again.',
+          ),
+        );
+      }
+      throw AuthException(
+        _messageFrom(e, 'Could not verify your code. Please try again.'),
+      );
+    }
+  }
+
+  @override
+  Future<void> resendActivationCode() async {
+    final pending = await _tokenStorage.readPendingSignup();
+    if (pending == null) {
+      throw AuthException(
+        'Your verification session has expired. Please sign up again.',
+        code: 'no_pending',
+      );
+    }
+
+    try {
+      // There is no separate resend route: calling sign-up again with the
+      // same details makes the server email a fresh code.
+      final response = await _apiClient.dio.post(
+        '/user/signup',
+        data: {
+          'username': pending.username,
+          'gender': pending.gender,
+          'email': pending.email,
+          'country': pending.country,
+          'password': pending.password,
+        },
+      );
+
+      final data = response.data;
+      final newToken = data is Map ? data['access_token'] : null;
+      await _tokenStorage.savePendingSignup(
+        token: newToken is String && newToken.isNotEmpty
+            ? newToken
+            : pending.token,
+        username: pending.username,
+        gender: pending.gender,
+        email: pending.email,
+        country: pending.country,
+        password: pending.password,
+      );
+    } on DioException catch (e) {
+      throw AuthException(
+        _messageFrom(e, 'Could not send a new code. Please try again.'),
+      );
     }
   }
 
@@ -103,6 +264,8 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> signOut() async {
     await _tokenStorage.clearSession(); // JWT + saved email/password
+    // Abandoning a pending sign-up must also forget its temporary token.
+    await _tokenStorage.clearPendingSignup();
     await _tokenStorage.resetChatSession();
   }
 
@@ -199,7 +362,7 @@ class AuthRepositoryImpl implements AuthRepository {
   static String _messageFrom(DioException e, String fallback) {
     final data = e.response?.data;
     if (data is Map) {
-      final m = data['message'] ?? data['detail'];
+      final m = data['message'] ?? data['detail'] ?? data['error'];
       if (m is String && m.trim().isNotEmpty) return m;
       if (m is List && m.isNotEmpty) return m.first.toString();
     }

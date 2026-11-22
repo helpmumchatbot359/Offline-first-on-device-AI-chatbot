@@ -8,6 +8,7 @@ import 'package:mama_ai/features/auth/domain/auth_repository.dart';
 import 'package:mama_ai/features/auth/domain/user_profile.dart';
 import 'package:mama_ai/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:mama_ai/features/auth/presentation/pages/auth_page.dart';
+import 'package:mama_ai/features/auth/presentation/states/auth_state.dart';
 
 class _FakeAuthRepository implements AuthRepository {
   @override
@@ -38,11 +39,27 @@ class _FakeAuthRepository implements AuthRepository {
   }) async {}
 
   @override
+  Future<bool> hasPendingActivation() async => false;
+
+  @override
+  Future<String?> pendingActivationEmail() async => null;
+
+  @override
+  Future<DateTime?> pendingActivationExpiresAt() async => null;
+
+  @override
+  Future<ActivationResult> activate({required String code}) async =>
+      ActivationResult.activated;
+
+  @override
+  Future<void> resendActivationCode() async {}
+
+  @override
   Stream<void> get sessionExpired => const Stream<void>.empty();
 }
 
 void main() {
-  Future<void> pumpAuthPage(
+  Future<AuthBloc> pumpAuthPage(
     WidgetTester tester, {
     Size size = const Size(360, 640),
     bool signIn = true,
@@ -79,6 +96,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    return authBloc;
   }
 
   testWidgets('sign-in form fits a small phone', (tester) async {
@@ -145,10 +163,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a successful sign up flips to sign in with a note', (
+  testWidgets('a successful sign up moves to pending verification', (
     tester,
   ) async {
-    await pumpAuthPage(tester);
+    final bloc = await pumpAuthPage(tester);
 
     await tester.tap(find.text('Sign up'));
     await tester.pumpAndSettle();
@@ -174,9 +192,11 @@ void main() {
     await tester.tap(find.text('Create account'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Account created. Sign in to continue.'), findsOneWidget);
-    expect(find.text('Welcome back.'), findsOneWidget);
-    expect(find.text('Create account'), findsNothing);
+    // The app's AuthGate swaps to the six-box verification screen when it
+    // sees this status; this widget-only test checks the state it reacts to.
+    expect(bloc.state.status, AuthStatus.pendingActivation);
+    expect(bloc.state.email, 'ada@example.com');
+    expect(bloc.state.busy, isFalse);
     expect(tester.takeException(), isNull);
   });
 
