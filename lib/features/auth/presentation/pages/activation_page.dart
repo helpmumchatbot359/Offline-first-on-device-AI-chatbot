@@ -123,9 +123,11 @@ class _ActivationPageState extends State<ActivationPage> {
 
     if (digits.length > 1) {
       // A pasted code fills the boxes from here to the end.
-      for (var offset = 0;
-          offset < digits.length && index + offset < _codeLength;
-          offset++) {
+      for (
+        var offset = 0;
+        offset < digits.length && index + offset < _codeLength;
+        offset++
+      ) {
         _controllers[index + offset].text = digits[offset];
       }
       final next = (index + digits.length).clamp(0, _codeLength - 1);
@@ -219,7 +221,8 @@ class _ActivationPageState extends State<ActivationPage> {
               final cooldownLeft = _cooldownUntil == null
                   ? 0
                   : _cooldownUntil!.difference(DateTime.now()).inSeconds;
-              final canSubmit = !busy && !_expired && _code.length == _codeLength;
+              final canSubmit =
+                  !busy && !_expired && _code.length == _codeLength;
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
@@ -273,7 +276,10 @@ class _ActivationPageState extends State<ActivationPage> {
                             ),
                           ),
                           const SizedBox(height: 26),
-                          _buildCodeBoxes(colors: colors, hasError: state.error != null),
+                          _buildCodeBoxes(
+                            colors: colors,
+                            hasError: state.error != null,
+                          ),
                           const SizedBox(height: 14),
                           if (state.error != null)
                             Padding(
@@ -363,67 +369,74 @@ class _ActivationPageState extends State<ActivationPage> {
   }) {
     final typedLength = _code.length;
 
-    return Row(
-      children: List.generate(_codeLength, (index) {
-        final active = index == typedLength && !_expired;
-        final borderColor = hasError
-            ? colors.error
-            : active
-            ? colors.primary
-            : colors.outlineVariant;
+    // One group + a one-time-code hint on the first box lets Android/iOS
+    // offer the emailed code as a one-tap keyboard suggestion. If the OS
+    // dumps all six digits into that first box, our paste handler spreads
+    // them across the others and auto-submits.
+    return AutofillGroup(
+      child: Row(
+        children: List.generate(_codeLength, (index) {
+          final active = index == typedLength && !_expired;
+          final borderColor = hasError
+              ? colors.error
+              : active
+              ? colors.primary
+              : colors.outlineVariant;
 
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: index == _codeLength - 1 ? 0 : 8),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              height: 56,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: colors.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: borderColor,
-                  width: active || hasError ? 2 : 1,
+          return Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(right: index == _codeLength - 1 ? 0 : 8),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                height: 56,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: borderColor,
+                    width: active || hasError ? 2 : 1,
+                  ),
                 ),
-              ),
-              child: Semantics(
-                label: 'Digit ${index + 1} of $_codeLength',
-                child: TextField(
-                  controller: _controllers[index],
-                  focusNode: _focusNodes[index],
-                  textAlign: TextAlign.center,
-                  keyboardType: TextInputType.number,
-                  textInputAction: index == _codeLength - 1
-                      ? TextInputAction.done
-                      : TextInputAction.next,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                  ],
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: colors.onSurface,
+                child: Semantics(
+                  label: 'Digit ${index + 1} of $_codeLength',
+                  child: TextField(
+                    controller: _controllers[index],
+                    focusNode: _focusNodes[index],
+                    textAlign: TextAlign.center,
+                    keyboardType: TextInputType.number,
+                    autofillHints: index == 0
+                        ? const [AutofillHints.oneTimeCode]
+                        : null,
+                    textInputAction: index == _codeLength - 1
+                        ? TextInputAction.done
+                        : TextInputAction.next,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: colors.onSurface,
+                    ),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      counterText: '',
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onTap: () {
+                      final controller = _controllers[index];
+                      controller.selection = TextSelection(
+                        baseOffset: 0,
+                        extentOffset: controller.text.length,
+                      );
+                    },
+                    onChanged: (value) => _handleChanged(index, value),
+                    onSubmitted: (_) => _submit(),
                   ),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    counterText: '',
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  onTap: () {
-                    final controller = _controllers[index];
-                    controller.selection = TextSelection(
-                      baseOffset: 0,
-                      extentOffset: controller.text.length,
-                    );
-                  },
-                  onChanged: (value) => _handleChanged(index, value),
-                  onSubmitted: (_) => _submit(),
                 ),
               ),
             ),
-          ),
-        );
-      }),
+          );
+        }),
+      ),
     );
   }
 }
