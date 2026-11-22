@@ -417,9 +417,19 @@ class _ActivationPageState extends State<ActivationPage> {
                       color: colors.onSurface,
                     ),
                     decoration: const InputDecoration(
+                      // AppTheme gives every field a filled outline by
+                      // default. Clear *every* state here, otherwise each
+                      // digit box draws a second border inside ours.
                       border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      focusedErrorBorder: InputBorder.none,
+                      filled: false,
                       counterText: '',
                       contentPadding: EdgeInsets.zero,
+                      isDense: true,
                     ),
                     onTap: () {
                       final controller = _controllers[index];

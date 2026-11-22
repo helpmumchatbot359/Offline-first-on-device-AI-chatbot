@@ -25,10 +25,8 @@ class _FakeAuthRepository implements AuthRepository {
   Future<bool> hasSession() async => signedIn;
 
   @override
-  Future<UserProfile?> currentUser() async => UserProfile(
-    name: 'Ada',
-    email: pendingEmail ?? 'ada@example.com',
-  );
+  Future<UserProfile?> currentUser() async =>
+      UserProfile(name: 'Ada', email: pendingEmail ?? 'ada@example.com');
 
   @override
   Future<void> signUp({
@@ -44,10 +42,7 @@ class _FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> signIn({
-    required String email,
-    required String password,
-  }) async {
+  Future<void> signIn({required String email, required String password}) async {
     if (signInError != null) throw signInError!;
     signedIn = true;
   }
@@ -69,8 +64,7 @@ class _FakeAuthRepository implements AuthRepository {
   Future<String?> pendingActivationEmail() async => pendingEmail;
 
   @override
-  Future<DateTime?> pendingActivationExpiresAt() async =>
-      pendingExpiresAtValue;
+  Future<DateTime?> pendingActivationExpiresAt() async => pendingExpiresAtValue;
 
   @override
   Future<ActivationResult> activate({required String code}) async {
@@ -169,7 +163,10 @@ void main() {
         (s) => s.status == AuthStatus.unauthenticated && s.error != null,
       );
 
-      expect(bloc.state.error, 'This account is already active. Please sign in.');
+      expect(
+        bloc.state.error,
+        'This account is already active. Please sign in.',
+      );
       expect(bloc.state.email, 'ada@example.com');
     });
 
@@ -193,7 +190,9 @@ void main() {
       final repo = _FakeAuthRepository()
         ..pending = true
         ..pendingEmail = 'ada@example.com'
-        ..pendingExpiresAtValue = DateTime.now().add(const Duration(minutes: 9));
+        ..pendingExpiresAtValue = DateTime.now().add(
+          const Duration(minutes: 9),
+        );
       final bloc = AuthBloc(repo);
       addTearDown(bloc.close);
 
@@ -204,20 +203,26 @@ void main() {
       expect(bloc.state.email, 'ada@example.com');
     });
 
-    test('403 on login resumes activation when a pending token exists', () async {
-      final repo = _FakeAuthRepository()
-        ..pending = true
-        ..pendingEmail = 'ada@example.com'
-        ..signInError = AuthException('Not activated', code: 'pending_activation');
-      final bloc = AuthBloc(repo);
-      addTearDown(bloc.close);
+    test(
+      '403 on login resumes activation when a pending token exists',
+      () async {
+        final repo = _FakeAuthRepository()
+          ..pending = true
+          ..pendingEmail = 'ada@example.com'
+          ..signInError = AuthException(
+            'Not activated',
+            code: 'pending_activation',
+          );
+        final bloc = AuthBloc(repo);
+        addTearDown(bloc.close);
 
-      bloc.add(SignInSubmitted('ada@example.com', 'YourPassword123!'));
-      await _until(bloc, (s) => s.status == AuthStatus.pendingActivation);
+        bloc.add(SignInSubmitted('ada@example.com', 'YourPassword123!'));
+        await _until(bloc, (s) => s.status == AuthStatus.pendingActivation);
 
-      expect(bloc.state.status, AuthStatus.pendingActivation);
-      expect(bloc.state.error, isNull);
-    });
+        expect(bloc.state.status, AuthStatus.pendingActivation);
+        expect(bloc.state.error, isNull);
+      },
+    );
   });
 
   testWidgets('activation screen shows six boxes and auto-submits', (
@@ -244,12 +249,26 @@ void main() {
     expect(find.text('Check your email'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
-        (w) => w is RichText && w.text.toPlainText().contains('ada@example.com'),
+        (w) =>
+            w is RichText && w.text.toPlainText().contains('ada@example.com'),
       ),
       findsOneWidget,
     );
     expect(find.byType(TextField), findsNWidgets(6));
     expect(find.byType(AnimatedContainer), findsNWidgets(6));
+    // No second outline/background should be drawn inside each box by the
+    // global InputDecorationTheme (that used to make them look doubled).
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is InputDecorator &&
+            (w.decoration.filled == true ||
+                w.decoration.border != InputBorder.none ||
+                w.decoration.enabledBorder != InputBorder.none ||
+                w.decoration.focusedBorder != InputBorder.none),
+      ),
+      findsNothing,
+    );
 
     // Typing/pasting the whole code into the first box distributes it across
     // the six visible boxes and auto-submits.
