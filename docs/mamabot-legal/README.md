@@ -14,8 +14,8 @@ Do **not** replace those general pages.
 After GitHub Pages is enabled for this repository, the pages will be:
 
 ```text
-https://helpmumchatbot359.github.io/Offline-first-on-device-AI-chatbot/docs/mamabot-legal/terms.html
-https://helpmumchatbot359.github.io/Offline-first-on-device-AI-chatbot/docs/mamabot-legal/privacy.html
+https://helpmumchatbot359.github.io/Offline-first-on-device-AI-chatbot/mamabot-legal/terms.html
+https://helpmumchatbot359.github.io/Offline-first-on-device-AI-chatbot/mamabot-legal/privacy.html
 ```
 
 ## Enable GitHub Pages
@@ -52,7 +52,7 @@ Then commit and push the generated `docs/mamabot-legal/*.html` files.
 Set the Privacy Policy URL to:
 
 ```text
-https://helpmumchatbot359.github.io/Offline-first-on-device-AI-chatbot/docs/mamabot-legal/privacy.html
+https://helpmumchatbot359.github.io/Offline-first-on-device-AI-chatbot/mamabot-legal/privacy.html
 ```
 
 ## If you later get a nicer MamaBot domain
