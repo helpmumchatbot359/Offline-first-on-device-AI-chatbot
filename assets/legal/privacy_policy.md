@@ -47,5 +47,3 @@ Legal@helpmum.org
 - ☐	I have read this notice and consent to HelpMum processing my personal and health information as described.
 
 - ☐	I agree to the Terms of Use.
-
-Read our full Privacy Policy: https://mamabot-legal.netlify.app/privacy.html
