@@ -49,3 +49,6 @@ app.*.map.json
 # Widget Preview related
 .widget_preview/
 env.json
+
+# Large local model artifacts (never commit or upload these)
+/local_models/

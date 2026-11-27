@@ -14,24 +14,26 @@ class ModelSetupException implements Exception {
 }
 
 /// Gets the offline files onto the phone:
-///  * the 2.5 GB Gemma model (downloaded, resumable, hash-checked)
+///  * the ~486 MB Qwen model (downloaded, resumable, hash-checked)
 ///  * the knowledge database (copied from the app bundle)
 class ModelSetupService {
   ModelSetupService({Dio? dio}) : _dio = dio ?? Dio();
   final Dio _dio;
 
+  // Small-model branch: Qwen3.5 0.8B replaces the 2.5 GB Gemma artifact.
+  // This is the hosted download used by Play Store installs.
   static const modelUrl =
-      'https://offline-ai-mamabot-355119164071.s3.amazonaws.com/models/gemma-4-E2B-it.litertlm';
+      'https://offline-ai-mamabot-355119164071.s3.amazonaws.com/models/Qwen3.5-0.8B_mixed48_h1024.litertlm';
   static const expectedSha256 =
-      '181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c';
-  static const fileName = 'gemma-4-E2B-it.litertlm';
-  
-  static const expectedSizeBytes = 2588147712;
+      '61c65dbcaa86461184df1b60a82941c5d3e65fb535411d1b2192ccf222e98b35';
+  static const fileName = 'Qwen3.5-0.8B_mixed48_h1024.litertlm';
+
+  static const expectedSizeBytes = 486539264;
 
   // Declare this file under `flutter: assets:` in pubspec.yaml.
   static const knowledgeAsset = 'assets/knowledge/knowledge.sqlite3';
   static const knowledgeFileName = 'knowledge.sqlite3';
-  static const knowledgeSizeBytes = 27107328;
+  static const knowledgeSizeBytes = 36794368;
   static const runtimeFileName = 'runtime.sqlite3';
 
   Future<Directory> _dir() => getApplicationSupportDirectory();

@@ -1,60 +1,120 @@
 {
-  "package_version": "mamaai-gemma-4-e2b-2026.10.22",
-  "model": {
-    "candidate": "Gemma 4 E2B mobile text-only",
-    "runtime": "litert-lm",
-    "runtime_version": "0.18.0",
-    "format": "LiteRT-LM",
-    "quantization": "Gemma 4 mobile mixed 2/4/8-bit scheme",
-    "license": "Apache-2.0",
-    "artifact_sha256": "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c",
-    "filename": "gemma-4-E2B-it.litertlm"
+  "corpus_id": "mamabot-internal-medical-knowledge",
+  "package_version": "sha256-1a78bc81ec250072aad7922b5419cf88111fb2488640e2a51df7f28a0a480bdd",
+  "package_schema_version": "1",
+  "compatibility": {
+    "retrieval_contract_version": "1",
+    "model_runtimes": [
+      {
+        "candidate": "Gemma 4 E2B mobile text-only",
+        "runtime": "litert-lm",
+        "artifact_format": "LiteRT-LM",
+        "artifact_sha256": "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c"
+      },
+      {
+        "candidate": "Qwen3.5 0.8B LiteRT-LM conversational",
+        "runtime": "litert-lm",
+        "artifact_format": "LiteRT-LM",
+        "artifact_sha256": "61c65dbcaa86461184df1b60a82941c5d3e65fb535411d1b2192ccf222e98b35"
+      }
+    ]
   },
-  "knowledge": {
-    "package_version": "sha256-07f97f28dfb1b30056fa0fc09b0a65eb01240cddc179649c28d596d121bb5abd",
-    "manifest_sha256": "dd680c52f8eb68dce88472fc1cfd10d4637a69aa002f03837546515637209153",
-    "index_sha256": "1b405e80b8b70ec211e81713485e152ecdcf47c15e0eb5c9dcc39607901171ba"
+  "update_policy": {
+    "release_layout": "releases/<package_version>/manifest.json and knowledge.sqlite3",
+    "activation": "atomic active.json replacement after read-only verification",
+    "rollback": "previous_package_version in active.json",
+    "update_history": "update-history.jsonl",
+    "mutable_runtime_state": "runtime.sqlite3 remains separate from the immutable knowledge release"
   },
-  "components": [
-    {
-      "path": "model/gemma-4-E2B-it.litertlm",
-      "size_bytes": 2588147712,
-      "sha256": "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c"
+  "owner": "HelpMum",
+  "provenance": {
+    "type": "internal_first_party",
+    "basis": "Existing knowledge corpus used by MamaBot and Vax AI",
+    "exported_at": "2026-10-15T10:34:14+01:00",
+    "external_source_metadata": null,
+    "external_license": null
+  },
+  "scope": {
+    "description": "Revised MamaBot/Vax AI question-and-answer package for local maternal-health RAG.",
+    "retrieval_mode": "on_device_local_only",
+    "clinical_content_status": "internal_existing_corpus",
+    "record_shape": "question_and_answer_flattened_into_metadata.additional_info",
+    "package_filtering": "scope, safety, schedule and duplicate curation",
+    "separate_clinical_review_record": null
+  },
+  "package_lineage": {
+    "source_export_record_count": 36636,
+    "active_database": {
+      "path": "data/knowledge/knowledge.sqlite3",
+      "record_count": 29394,
+      "status": "active"
     },
-    {
-      "path": "knowledge/knowledge.sqlite3",
-      "size_bytes": 27107328,
-      "sha256": "1b405e80b8b70ec211e81713485e152ecdcf47c15e0eb5c9dcc39607901171ba"
+    "revised_database": {
+      "path": "data/knowledge/knowledge.sqlite3",
+      "record_count": 29394,
+      "sha256": "1a78bc81ec250072aad7922b5419cf88111fb2488640e2a51df7f28a0a480bdd",
+      "size_bytes": 36794368,
+      "status": "merged MamaBot/Vax AI runtime package"
     },
-    {
-      "path": "knowledge/manifest.json",
-      "size_bytes": 4331,
-      "sha256": "dd680c52f8eb68dce88472fc1cfd10d4637a69aa002f03837546515637209153"
-    },
-    {
-      "path": "contracts/tool_contract.json",
-      "size_bytes": 12364,
-      "sha256": "69695d9b2d7723eda6c6a2e8a4beeab85a10e6d85f7dd241bb41b6a50c34e397"
-    },
-    {
-      "path": "prompts/system_prompt.txt",
-      "size_bytes": 4635,
-      "sha256": "08fa683a02cad09b027e82ba8dd0297c5bb6aaa445b8331775755186b05aacea"
+    "merged_sources": {
+      "mamabot_database": "data/knowledge/mamabot-ai/knowledge-revised.sqlite3",
+      "vax_database": "data/knowledge/vax-ai/knowledge-revised.sqlite3",
+      "record_count": 29394,
+      "vax_database_record_count": 7721
     }
-  ],
-  "excluded_from_release": [
-    "runtime.sqlite3",
-    "Qwen3.5-0.8B-Q4_K_M.gguf",
-    "*.xnnpack_cache",
-    "benchmark databases and scoring workbooks",
-    "raw knowledge exports and evaluation-only files"
-  ],
-  "android_handoff": {
-    "model_path": "model/gemma-4-E2B-it.litertlm",
-    "initial_backend": "CPU",
-    "cache_directory": "app-private writable cache directory",
-    "tool_contract_asset": "contracts/tool_contract.json",
-    "knowledge_index": "knowledge/knowledge.sqlite3",
-    "mutable_chat_and_telemetry": "owned by the mobile app; not included"
+  },
+  "retrieval_specification": {
+    "chunking_policy": "one_complete_q_and_a_record_per_passage",
+    "passage_id_policy": "record-{record_id}",
+    "search_method": "sqlite_fts5_bm25",
+    "indexed_fields": "question,answer",
+    "filtering": "deterministic metadata and requested-action compatibility",
+    "embedding_assets": "none",
+    "runtime_database": {
+      "path": "../runtime/runtime.sqlite3",
+      "tables": [
+        "conversation_sessions",
+        "conversation_messages",
+        "documents",
+        "document_passages",
+        "document_search",
+        "telemetry_events",
+        "retrieval_records",
+        "health_records",
+        "reminders"
+      ],
+      "accepted_formats": [
+        "pdf",
+        "docx",
+        "txt",
+        "md"
+      ],
+      "extraction": "text_layer_only",
+      "ocr": "excluded",
+      "chunking_policy": "1200_character_passages_with_200_character_overlap",
+      "search_method": "sqlite_fts5_bm25",
+      "filter_field": "user_id,session_id",
+      "citation_fields": [
+        "display_name",
+        "document_id",
+        "passage_id"
+      ],
+      "content_policy": "document_content_is_not_copied_into_events",
+      "telemetry_sync_column": "synced_at"
+    },
+    "record_count": 29394,
+    "question_answer_character_count": {
+      "minimum": 25,
+      "maximum": 1858,
+      "average": 541.81
+    },
+    "index": {
+      "path": "data/knowledge/knowledge.sqlite3",
+      "format": "sqlite_fts5",
+      "sha256": "1a78bc81ec250072aad7922b5419cf88111fb2488640e2a51df7f28a0a480bdd",
+      "size_bytes": 36794368,
+      "sqlite_page_count": 8983,
+      "sqlite_page_size": 4096
+    }
   }
 }

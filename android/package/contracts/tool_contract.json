@@ -1,0 +1,14 @@
+{
+  "tools": [
+    {
+      "name": "oncall_rag",
+      "description": "Retrieve up to two relevant local maternal and child-health passages for the current user message. Call with no arguments; the result is passage text separated by newlines.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "OnCallRagArguments",
+        "type": "object"
+      }
+    }
+  ]
+}

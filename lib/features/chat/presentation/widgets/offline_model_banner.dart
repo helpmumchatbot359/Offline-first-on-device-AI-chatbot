@@ -96,7 +96,7 @@ class OfflineModelBanner extends StatelessWidget {
                     ? 'You can now get answers even without an internet connection.'
                     : s.status == OfflineSetupStatus.failed && s.message != null
                     ? s.message!
-                    : 'Download the offline assistant once (about 2.6 GB). Wi-Fi is best.',
+                    : 'Download the offline assistant once (about 465 MB). Wi-Fi is best.',
                 style: text.bodyMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),

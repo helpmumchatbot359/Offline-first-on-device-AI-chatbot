@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -50,9 +51,10 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
     private volatile String activeChatId;
     private String systemPrompt;
     private boolean prefillPreface;
-   
+    private RuntimeModelProfile modelProfile = RuntimeModelProfiles.defaultProfile();
+
     private static final long FIRST_TOKEN_TIMEOUT_SECONDS = 240; // 4 minutes
-    
+
     private static final long STREAMING_BUDGET_SECONDS = 180; // 3 minutes
 
 
@@ -69,11 +71,21 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
     public synchronized void initialize(
             String modelPath, String knowledgePath, String runtimePath,
             String backend, int maxContextTokens, boolean prefillPreface) {
+        initialize(modelPath, knowledgePath, runtimePath, backend, maxContextTokens,
+                prefillPreface, null);
+    }
+
+    public synchronized void initialize(
+            String modelPath, String knowledgePath, String runtimePath,
+            String backend, int maxContextTokens, boolean prefillPreface,
+            String requestedModel) {
         close();
 
         if (!new java.io.File(modelPath).exists()) {
             throw new IllegalStateException("Model file not found: " + modelPath);
         }
+
+        this.modelProfile = RuntimeModelProfiles.select(requestedModel, modelPath);
 
         EngineConfig config = RuntimeTuning.createEngineConfig(
                 context, modelPath, backend, maxContextTokens);
@@ -82,7 +94,7 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
 
         ensureKnowledgeFile(knowledgePath);
         rag = new LocalRagStore(context, knowledgePath, runtimePath);
-        
+
         conversations = new LocalConversationStore(rag.database());
         systemPrompt = loadAsset("system_prompt.txt");
         this.prefillPreface = prefillPreface;
@@ -131,6 +143,7 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
         }
         JsonObject started = event("started", requestId, chatId);
         started.addProperty("session_id", sessionId);
+        started.addProperty("model", modelProfile.name());
         started.addProperty("safety_pending", false);
         emit(sink, started);
         conversations.append(userId, sessionId, current);
@@ -145,11 +158,12 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
         if (stored.isEmpty()) stored = conversations.load(userId, sessionId);
 
         activeStage = "system_prompt_building";
-        String system = systemPrompt;
-        // The tool provider is created INSIDE the try block below. If its setup
-        // fails (for example the contract asset is missing), that problem is
-        // reported as a normal "error" event instead of escaping the method.
-        OfflineToolProvider tools = null;
+        String callerSystem = request.has("system_message")
+                ? request.get("system_message").getAsString() : "";
+        String system = joinSystem(callerSystem, systemPrompt);
+        OfflineToolProvider tools = new OfflineToolProvider(
+                userId, sessionId, current.content, rag, assets);
+        List<JsonObject> toolSchemas = tools == null ? new ArrayList<>() : tools.schemas();
         Conversation conversation = null;
         String finalText = "";
         boolean toolWasUsed = false;
@@ -159,11 +173,8 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
         activeRequestId = requestId;
         activeChatId = chatId;
 
+        activeStage = "generation";
         try {
-            tools = new OfflineToolProvider(
-                    userId, sessionId, current.content, rag, assets);
-            List<JsonObject> toolSchemas = tools.schemas();
-            activeStage = "generation";
             List<ChatMessage> generationTurns = RuntimePolicy.buildContext(
                     stored, system, toolSchemas, null);
             generationTurns.add(ChatMessage.user(current.content));
@@ -171,28 +182,32 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
             boolean toolsDisabled = false;
             while (true) {
                 if (cancelled) throw new java.util.concurrent.CancellationException();
-                activeStage = "generation";
                 if (toolRounds >= RuntimePolicy.MAX_TOOL_ROUNDS) toolsDisabled = true;
                 OfflineToolProvider activeTools = toolsDisabled ? null : tools;
                 if (activeTools != null) activeTools.beginTurn(toolRounds + 1);
                 String prompt = RuntimePolicy.renderForPrompt(generationTurns, system);
+                Engine generationEngine = engine;
+                ThinkingConfig thinkingConfig = activeTools == null
+                        ? modelProfile.textThinkingConfig()
+                        : modelProfile.toolThinkingConfig();
                 ConversationConfig config = new ConversationConfig(
                         Contents.Companion.of(system == null ? "" : system),
                         Collections.emptyList(),
                         activeTools == null ? Collections.emptyList() : Collections.singletonList(activeTools),
                         samplerConfig(request),
-                        false,
+                        modelProfile.automaticToolCalling(),
                         Collections.emptyList(),
                         Collections.emptyMap(),
                         null,
                         prefillPreface,
                         outputLimit(request),
-                        new ThinkingConfig(false),
+                        thinkingConfig,
                         responseFormat(request) != null);
-                conversation = engine.createConversation(config);
+                conversation = generationEngine.createConversation(config);
                 activeConversation = conversation;
                 StreamResult generated = streamWithRetries(conversation, prompt, requestId,
-                        chatId, sink, activeTools, outputLimit(request), request, system, prefillPreface);
+                        chatId, sink, activeTools, outputLimit(request), request, system,
+                        prefillPreface, generationEngine, thinkingConfig);
                 conversation = activeConversation;
                 totalGeneratedTokens += generated.tokenCount;
                 JsonArray toolRequests = generated.toolRequests;
@@ -246,7 +261,7 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                     emit(sink, resultEvent);
                     finalText = generated.text;
                     ChatMessage toolAssistant = new ChatMessage();
- 
+
                     toolAssistant.role = "assistant";
                     toolAssistant.content = generated.text.isEmpty() ? null : generated.text;
                     toolAssistant.toolCalls = toolRequests.deepCopy();
@@ -330,6 +345,16 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
         }
     }
 
+    private static String joinSystem(String... parts) {
+        StringBuilder result = new StringBuilder();
+        for (String part : parts) {
+            if (part == null || part.trim().isEmpty()) continue;
+            if (result.length() > 0) result.append("\n\n");
+            result.append(part.trim());
+        }
+        return result.toString();
+    }
+
     public void cancel(String chatId) {
         String requestedId = chatId == null ? "" : chatId;
         if (!requestedId.isEmpty()
@@ -356,7 +381,8 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
 
    private StreamResult stream(Conversation conversation, String prompt, String requestId,
                                 String chatId, EventSink sink, OfflineToolProvider tools,
-                                int outputLimit, ResponseFormat responseFormat) throws InterruptedException {
+                                int outputLimit, ResponseFormat responseFormat,
+                                ThinkingConfig thinkingConfig) throws InterruptedException {
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         AtomicBoolean responseStarted = new AtomicBoolean(false);
@@ -415,7 +441,7 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
             @Override public void onDone() { done.countDown(); }
             @Override public void onError(Throwable throwable) { failure.set(throwable); done.countDown(); }
         }, Collections.emptyMap(), null, null, null, outputLimit,
-                new ThinkingConfig(false), responseFormat);
+                thinkingConfig, responseFormat);
 
         final long waitBeganNs = System.nanoTime();
         boolean timedOut = false;
@@ -462,23 +488,25 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                                            String requestId, String chatId, EventSink sink,
                                            OfflineToolProvider tools, int outputLimit,
                                            JsonObject request, String system,
-                                           boolean prefillPreface) throws InterruptedException {
+                                           boolean prefillPreface, Engine generationEngine,
+                                           ThinkingConfig thinkingConfig) throws InterruptedException {
         int attempts = request.has("retry_attempts")
                 ? Math.max(1, request.get("retry_attempts").getAsInt()) : 2;
         RetryableGenerationException last = null;
         for (int attempt = 1; attempt <= attempts; attempt++) {
             try {
                 return stream(conversation, prompt, requestId, chatId, sink, tools,
-                        outputLimit, responseFormat(request));
+                        outputLimit, responseFormat(request), thinkingConfig);
             } catch (RetryableGenerationException exception) {
                 last = exception;
                 if (attempt >= attempts) break;
                 closeConversation(conversation);
-                conversation = engine.createConversation(new ConversationConfig(
+                conversation = generationEngine.createConversation(new ConversationConfig(
                         Contents.Companion.of(system == null ? "" : system), Collections.emptyList(),
                         tools == null ? Collections.emptyList() : Collections.singletonList(tools),
-                        samplerConfig(request), false, Collections.emptyList(), Collections.emptyMap(), null,
-                        prefillPreface, outputLimit, new ThinkingConfig(false),
+                        samplerConfig(request), modelProfile.automaticToolCalling(),
+                        Collections.emptyList(), Collections.emptyMap(), null,
+                        prefillPreface, outputLimit, thinkingConfig,
                         responseFormat(request) != null));
                 activeConversation = conversation;
             }
@@ -646,7 +674,7 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
     private static String inferenceErrorCode(boolean toolFailed, Throwable throwable) {
         if (toolFailed) return "TOOL_ERROR";
         String message = throwable.getMessage() == null
-                ? throwable.toString() : throwable.getMessage().toLowerCase(java.util.Locale.ROOT);
+                ? throwable.toString() : throwable.getMessage().toLowerCase(Locale.ROOT);
         if (message.contains("timed out") || message.contains("timeout")) {
             return "GENERATION_TIMEOUT";
         }
@@ -696,6 +724,8 @@ public final class OfflineMamaAiRuntime implements AutoCloseable {
                 return;
             } catch (IOException ignored) { /* try next candidate */ }
         }
-        android.util.Log.w("MamaAi", "Knowledge database not found in assets: " + knowledgePath);
+        String message = "Knowledge database not found in assets: " + knowledgePath;
+        android.util.Log.e("MamaAi", message);
+        throw new IllegalStateException(message);
     }
 }
